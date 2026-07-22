@@ -1,0 +1,84 @@
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[project]
+name = "tistos-opt"
+version = "0.1.0"
+description = "Tistos case plugin for hydroflow-opt"
+readme = "README.md"
+authors = [
+  {name = "Simon Eyeselein", email = "simon.eyselein@ihs.uni-stuttgart.de"},
+  {name = "Thomas Isensee", email = "thomas.isensee@iwr.uni-heidelberg.de"},
+]
+requires-python = ">=3.11,<3.14"
+license-files = ["LICEN[CS]E*"]
+license = "MIT"
+classifiers = [
+    "Intended Audience :: Science/Research",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+]
+dependencies = [
+  "hydroflow-opt",
+  "numpy",
+  "oslo.concurrency",
+  "scikit-learn"
+  ]
+
+[project.optional-dependencies]
+dev = [
+    "mypy",
+    "pytest",
+    "pytest-cov",
+    "ruff",
+]
+lint = [
+    "mypy",
+    "ruff",
+]
+tests = [
+    "pytest",
+    "pytest-cov",
+]
+
+[project.entry-points."hydroflow_opt.cases"]
+tistos = "tistos_opt.case:TistosCase"
+
+[project.scripts]
+tistos-opt = "tistos_opt.cli:main"
+tistos-opt-worker = "tistos_opt.worker:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/tistos_opt"]
+exclude = [
+  "src/tistos_opt/_case_data/xml/ru_gridMesh_local.xml",
+  "src/tistos_opt/_case_data/xml/tistos_ru_of_old.xml",
+  "src/tistos_opt/_legacy/tistos_files/machineSave.xml",
+  "src/tistos_opt/_legacy/tistos_files/run_of.sh",
+  "src/tistos_opt/_legacy/tistos_files/sim_openFoam.py",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.mypy]
+exclude = [
+  "^src/tistos_opt/_legacy/",
+  "^src/tistos_opt/_case_data/",
+]
+
+[[tool.mypy.overrides]]
+module = ["hydroflow_opt", "hydroflow_opt.*"]
+ignore_missing_imports = true
+
+[tool.ruff]
+line-length = 79
+target-version = "py311"
+extend-exclude = ["src/tistos_opt/_legacy", "src/tistos_opt/_case_data"]
+force-exclude = true
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]

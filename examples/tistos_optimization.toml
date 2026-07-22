@@ -1,0 +1,20 @@
+[run]
+directory = "runs/tistos_optimization"
+scratch_directory = "runs/tistos_optimization/scratch"
+
+[case]
+name = "tistos"
+
+[resources]
+available_cpus = 1
+concurrent_evaluations = 1
+mpi_ranks = 1
+threads_per_rank = 1
+
+[optimization]
+islands = 1
+population_size = 8
+generations = 1
+differential_weight = 0.8
+crossover_rate = 0.9
+topology = "fully_connected"

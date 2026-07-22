@@ -1,6 +1,7 @@
 import subprocess
 import xml.etree.ElementTree as ET
 import os
+import sys
 import time
 from tistos_files.tistosPyBib import *
 from tistos_files.createStatesAndMeshes import *
@@ -35,8 +36,7 @@ class tistos:
         # self.mainDir = os.getcwd()
         self.stateNumber = int(self.state.split("_")[-1])
         self.caseName = "tistos_ru_of"
-        # self.procPerJob = os.environ["SLURM_CPUS_PER_TASK"]
-        self.procPerJob = 8
+        self.procPerJob = int(os.environ.get("FLOW_OPT_MPI_RANKS", "1"))
         self.cfdOk_ = False
         # self.wd = os.environ["TMPDIR"]
         self.wd = "./"
@@ -101,17 +101,19 @@ class tistos:
             # createStatesAndMeshes().CreateStates(state)
             # createStatesAndMeshes().CreateMeshes(state, caseName)
             args = [
-                "python3",
+                sys.executable,
                 "-c",
                 "from tistos_files.createStatesAndMeshes import *;"
                 "createStatesAndMeshes().CreateStates('" + state + "')",
             ]
             # result_a = subprocess.run(args, capture_output = True, timeout=1200)
-            result_a = subprocess.run(args, capture_output=True, timeout=300)
+            result_a = subprocess.run(
+                args, capture_output=True, timeout=300, check=True
+            )
             # logger.debug(f"result_a: {result_a.stdout.decode()}.")
             # logger.debug(f"result_a: {result_a.stderr.decode()}.")
             args = [
-                "python3",
+                sys.executable,
                 "-c",
                 "from tistos_files.createStatesAndMeshes import *;"
                 "createStatesAndMeshes().CreateMeshes('"
@@ -256,8 +258,13 @@ def runTistos(x, state):
     state = ti.state
     ti.pre()
     ti.mesh()
+    if not ti.MeshOk_:
+        raise RuntimeError(f"Mesh generation failed for {state}")
     logger.info(f"Proxy: Finished Meshing state {state}. Next Step: running cfd")
     ti.run()
+    if not ti.cfdOk_:
+        reason = ti.history_.get("ReasonOfFailure", "unknown CFD failure")
+        raise RuntimeError(f"OpenFOAM failed for {state}: {reason}")
     logger.info(f"Proxy: Finished Running CFD State {state}.")
     fit, fit_extra = ti.evaluate()
     logger.info(f"Proxy: Finished evaluate: {fit}")

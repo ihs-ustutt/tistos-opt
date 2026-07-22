@@ -1,0 +1,47 @@
+[run]
+directory = "runs/tistos_candidate"
+scratch_directory = "runs/tistos_candidate/scratch"
+
+[case]
+name = "tistos"
+
+[resources]
+available_cpus = 1
+concurrent_evaluations = 1
+mpi_ranks = 1
+threads_per_rank = 1
+
+[[candidate]]
+id = "author-example"
+
+[candidate.parameters]
+alpha_1_span_0 = -0.11438032
+alpha_1_span_05 = -0.16330727
+alpha_1_span_1 = -0.12347644
+alpha_2_span_0 = 0.04519614
+alpha_2_span_05 = -0.03833768
+alpha_2_span_1 = 0.01815242
+offset_m_span_0 = 1.38688502
+offset_m_span_05 = 1.48812174
+offset_m_span_1 = 1.43800951
+ratio_span_0 = 0.51168807
+ratio_span_05 = 0.50356657
+ratio_span_1 = 0.50007975
+offset_phi_r_span_0 = -0.05588548
+offset_phi_r_span_05 = -0.09595725
+offset_phi_r_span_1 = -0.00877194
+blade_length_span_0 = 0.72367283
+blade_length_span_05 = 0.99274612
+blade_length_span_1 = 1.12017201
+t_le_span_0 = 0.00703073
+t_le_span_05 = 0.00662532
+t_le_span_1 = 0.00570674
+t_mid_span_0 = 0.00818822
+t_mid_span_05 = 0.00783633
+t_mid_span_1 = 0.00976244
+t_te_span_0 = 0.00885879
+t_te_span_05 = 0.00653766
+t_te_span_1 = 0.00964224
+u_mid_span_0 = 0.48951801
+u_mid_span_05 = 0.54581857
+u_mid_span_1 = 0.54440488
