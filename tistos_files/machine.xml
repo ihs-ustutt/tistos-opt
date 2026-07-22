@@ -8,11 +8,11 @@
 		<option name="reparam_restartIncreasePrecision" value="10."/>
 		<option name="reparam_internalRestartDecreasePrecision" value="0.9"/>
 <!--		<option name="reparamInVolume_precisionXYZ" value="1.e-8"/>-->
-		<!-- 
-		  kMigrad = 0, kSimplex = 1, kCombined = 2, kScan = 3, kFumili = 4 
-		-->		
-    <option name="reparamOnFace_minimizer"      value=":Minuit2::kMigrad:"/>		
-		<option name="reparamInVolume_minimizer"    value=":Minuit2::kMigrad:"/>				
+		<!--
+		  kMigrad = 0, kSimplex = 1, kCombined = 2, kScan = 3, kFumili = 4
+		-->
+    <option name="reparamOnFace_minimizer"      value=":Minuit2::kMigrad:"/>
+		<option name="reparamInVolume_minimizer"    value=":Minuit2::kMigrad:"/>
 		<option name="invY_precision"               value="1.e-04"/>
 		<option name="xyz_resolution"               value="1.e-05"/>
 		<option name="XYZ_resolution"               value="1.e-04"/>
@@ -25,7 +25,7 @@
 		<option name="geometry_render_resolution_u" value="21"/>
 		<option name="geometry_render_resolution_v" value="21"/>
 		<option name="geometry_render_resolution_w" value="21"/>
-		<option name="root_printLevel"              value="0"/>		
+		<option name="root_printLevel"              value="0"/>
     <option name="root_maxIterations"           value="1000"/>
     <option name="root_maxFunctionCalls"        value="1000000"/>
 		<option name="ompNumThreads"                value="2"/>
@@ -34,12 +34,12 @@
 		<option name="map3dTo3d_deltaPer"           value="0.01"/>
     <option name="logLevel"                     value="99"/>
 		<option name="isEqualExtendCheck"           value="false"/>
-	</staticProperties>	
+	</staticProperties>
 
 	<function label="aF_meshTrans_mirrorY">
 		<builder name="muParser">
-			<expression 
-				value="xx, -yy, zz" 
+			<expression
+				value="xx, -yy, zz"
 				dimension="3"
 			/>
 			<x_one name="xx" min="-100." max="100."/>
@@ -49,27 +49,27 @@
 	</function>
 	<function label="aF_meshTrans_mirrorX">
 		<builder name="muParser">
-			<expression 
-				value="-xx, yy, zz" 
+			<expression
+				value="-xx, yy, zz"
 				dimension="3"
 			/>
 			<x_one name="xx" min="-100." max="100."/>
 			<x_two name="yy" min="-100." max="100."/>
-			<x_three name="zz" min="-100." max="100."/>						
+			<x_three name="zz" min="-100." max="100."/>
 		</builder>
-	</function>				
+	</function>
 	<function label="aF_meshTrans_mirrorXY">
 		<builder name="muParser">
-			<expression 
-				value="-xx, -yy, zz" 
+			<expression
+				value="-xx, -yy, zz"
 				dimension="3"
 			/>
 			<x_one name="xx" min="-100." max="100."/>
 			<x_two name="yy" min="-100." max="100."/>
-			<x_three name="zz" min="-100." max="100."/>						
+			<x_three name="zz" min="-100." max="100."/>
 		</builder>
-	</function>				
-				
+	</function>
+
 	<function label="baseContainer_runner">
     <builder name="baseContainer">
 			<Vector_3 label="v3_xx" x="1." y="0." z="0."/>
@@ -90,7 +90,7 @@
 			<transformer label="v0_s" name="pickMap2dTo3dRangePercent" parameter_percent_two  ="0."/>
 			<transformer label="v1_s" name="pickMap2dTo3dRangePercent" parameter_percent_two  ="1."/>
 			<transformer label="u0.5_s" name="pickMap2dTo3dRangePercent" parameter_percent_one  ="0.5"/>
-			<transformer label="v0.5_s" name="pickMap2dTo3dRangePercent" parameter_percent_two  ="0.5"/>      
+			<transformer label="v0.5_s" name="pickMap2dTo3dRangePercent" parameter_percent_two  ="0.5"/>
 			<transformer label="x00_f" name="pickVec3dTwoDRangePercent" x_percent_one="0."/>
 			<transformer label="x01_f" name="pickVec3dTwoDRangePercent" x_percent_one="1."/>
 			<transformer label="x10_f" name="pickVec3dTwoDRangePercent" x_percent_two="0."/>
@@ -103,91 +103,91 @@
         <Point_2 xy="0.5,0.0"/>
         <Point_2 xy="1.0,1.0"/>
       </transformer>
-      <transformer 
-				label="xYz_rPhiZ" 
-				name="xYz_rPhiZ" 
+      <transformer
+				label="xYz_rPhiZ"
+				name="xYz_rPhiZ"
 				origin="p3_0" rotationAxis="v3_Nzz" referenceAxis="v3_xx"
 			/>
-			
-				<transformer 
-					name="rotate" 
-					label="rot_ru"
-					origin="p3_0" 
-					rotation_vector="v3_Nzz" 
-					angle="0.5*_pi"
-				/>										
+
 				<transformer
-					name="rotate" 
-					label="rot_0.5pi_NZ"
-					origin="p3_0" 
-					rotation_vector="v3_Nzz" 
+					name="rotate"
+					label="rot_ru"
+					origin="p3_0"
+					rotation_vector="v3_Nzz"
 					angle="0.5*_pi"
-				/>			
-				<transformer 
-					name="rotate" 
+				/>
+				<transformer
+					name="rotate"
+					label="rot_0.5pi_NZ"
+					origin="p3_0"
+					rotation_vector="v3_Nzz"
+					angle="0.5*_pi"
+				/>
+				<transformer
+					name="rotate"
 					label="rot_1.0pi_NZ"
-					origin="p3_0" 
-					rotation_vector="v3_Nzz" 
+					origin="p3_0"
+					rotation_vector="v3_Nzz"
 					angle="1.0*_pi"
-				/>			
-				<transformer 
-					name="rotate" 
+				/>
+				<transformer
+					name="rotate"
 					label="rot_1.5pi_NZ"
-					origin="p3_0" 
-					rotation_vector="v3_Nzz" 
+					origin="p3_0"
+					rotation_vector="v3_Nzz"
 					angle="1.5*_pi"
 				/>
-				<transformer 
-					name="rotate" 
+				<transformer
+					name="rotate"
 					label="rot_0.5pi_Y"
-					origin="p3_0" 
-					rotation_vector="v3_yy" 
+					origin="p3_0"
+					rotation_vector="v3_yy"
 					angle="0.5*_pi"
 				/>
         <replace variable="ii" values="{1}{2}{3}{4}{5}{6}{7}{8}">
           <transformer
-            name="rotate" 
+            name="rotate"
             label="rot_ru_{ii}_NZ"
-            origin="p3_0" 
-            rotation_vector="v3_Nzz" 
+            origin="p3_0"
+            rotation_vector="v3_Nzz"
             angle="{ii} * (1./#cV_ru_nBlades#)*2.*_pi"
-          />			   
+          />
         </replace>
-				<transformer 
-					name="reverse" 
+				<transformer
+					name="reverse"
 					label="revU"
-					reverse_u="true" 
-					reverse_v="false" 
-					reverse_w="false" 
+					reverse_u="true"
+					reverse_v="false"
+					reverse_w="false"
 				/>
-				<transformer 
-					name="reverse" 
+				<transformer
+					name="reverse"
 					label="revV"
-					reverse_u="false" 
-					reverse_v="true" 
-					reverse_w="false" 
-				/>				
-				<transformer 
-					name="reverse" 
-					label="revUV"
-					reverse_u="true" 
-					reverse_v="true" 
-					reverse_w="false" 
+					reverse_u="false"
+					reverse_v="true"
+					reverse_w="false"
 				/>
-				<transformer 
-					name="applyVec3dThreeD" 
+				<transformer
+					name="reverse"
+					label="revUV"
+					reverse_u="true"
+					reverse_v="true"
+					reverse_w="false"
+				/>
+				<transformer
+					name="applyVec3dThreeD"
 					label="mirrorX"
 				>
 					<analyticFunction label="aF_meshTrans_mirrorX"/>
 				</transformer>
-				<transformer 
-					name="applyVec3dThreeD" 
+				<transformer
+					name="applyVec3dThreeD"
 					label="mirrorY"
 				>
 					<analyticFunction label="aF_meshTrans_mirrorY"/>
-				</transformer>				
-				<transformer 
-					name="applyVec3dThreeD" 
+				</transformer>
+				<transformer
+					name="applyVec3dThreeD"
 					label="mirrorXY"
 				>
 					<analyticFunction label="aF_meshTrans_mirrorXY"/>
@@ -202,8 +202,8 @@
 	</function>
 	<function label="aF_wvu_uvw">
 		<builder name="muParser">
-			<expression 
-				value="zz, yy, xx" 
+			<expression
+				value="zz, yy, xx"
 				dimension="3"
 			/>
 			<x_one name="xx" min="0." max="1."/>
@@ -213,17 +213,17 @@
 	</function>
 	<function label="aF_uv_uv_aQuarter">
 		<builder name="muParser">
-			<expression 
-				value="xx*0.25, yy" 
+			<expression
+				value="xx*0.25, yy"
 				dimension="2"
 			/>
 			<x_one name="xx" min="0." max="1."/>
 			<x_two name="yy" min="0." max="1."/>
 		</builder>
-	</function>		
+	</function>
 	<part label="aG_inf">
 		<builder name="infinityMap3dTo3d"/>
-	</part>	
+	</part>
 
 	<constValueInit state="Init"/>
 
@@ -234,17 +234,17 @@
 !
 !
 -->
-	
-	<include label="case_constants" filename="./xml/case_constants.xml"/> 
-  
+
+	<include label="case_constants" filename="./xml/case_constants.xml"/>
+
 <!--
 !
 !
 ! ru channel
 !
 !
--->					
-        <include label="ru_channel" filename="./xml/ru_channel.xml"/> 
+-->
+        <include label="ru_channel" filename="./xml/ru_channel.xml"/>
 
 
 <!--
@@ -253,35 +253,35 @@
 ! ru parameterization
 !
 !
--->					
+-->
         <include label="ru_meanline2d" filename="./xml/ru_meanline2d.xml"/>
 	<include label="ru_meanline" filename="./xml/ru_meanline.xml"/>
 	<include label="ru_bladeRunner2d" filename="./xml/ru_bladeRunner2d.xml"/>
-        <include label="ru_bladeRunner" filename="./xml/ru_bladeRunner.xml"/> 
+        <include label="ru_bladeRunner" filename="./xml/ru_bladeRunner.xml"/>
 
-	
+
 <!--
 !
 !
 ! ru mesh
 !
 !
--->						
+-->
         <include label="ru_bladeRunnerMeshBlock2d" filename="./xml/ru_bladeRunnerMeshBlock2d.xml"/>
 	<include label="ru_bladeRunnerMeshBlock" filename="./xml/ru_bladeRunnerMeshBlock.xml"/>
 	<include label="ru_gridChannel" filename="./xml/ru_gridChannel.xml"/>
 	<include label="ru_gridMesh" filename="./xml/ru_gridMesh.xml"/>
 	<include label="ruWithRounding_mechMesh" filename="./xml/ruWithRounding_mechMesh.xml"/>
 
-  
+
 <!--
 !
 !
 ! case
 !
 !
--->	
-	<include label="tistos_ru_of" filename="./xml/tistos_ru_of.xml"/>  
+-->
+	<include label="tistos_ru_of" filename="./xml/tistos_ru_of.xml"/>
     <!--<include label="ingvrudtoutFull_coupled_of" filename="./xml/ingvrudtoutFull_coupled_of.xml"/> -->
 <!--
 !
@@ -289,7 +289,7 @@
 ! step write
 !
 !
--->	
+-->
 		<!--	<include label="ru_writeStep" filename="./xml/ru_writeStep.xml"/> -->
 
 </machine>

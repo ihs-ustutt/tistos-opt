@@ -47,7 +47,7 @@
       <Point_2 x="0.50" y="180. - 20.015"/>
       <Point_2 x="1.00" y="180. - 11.85"/>
     </builder>
-  </function> 
+  </function>
 
   <function label="f_ru_M">
     <builder  name="scaCurve2dOneD" order="2">
@@ -81,9 +81,9 @@
         "
         delta_y="( $f_ru_M_ex(#cV_ru_mplane_{ii}#)$ + 1 ) * $f_ru_M(#cV_ru_mplane_{ii}#)$"
         delta_x="
-          ( 1. - $f_ru_ratio(#cV_ru_mplane_{ii}#)$ ) 
-          * 
-          (                                       
+          ( 1. - $f_ru_ratio(#cV_ru_mplane_{ii}#)$ )
+          *
+          (
             (
               ( $f_ru_M_ex(#cV_ru_mplane_{ii}#)$ + 1 ) * $f_ru_M(#cV_ru_mplane_{ii}#)$
             )
@@ -94,11 +94,11 @@
                 _pi * ( $f_ru_alpha_1(#cV_ru_mplane_{ii}#)$ * ( 1 + $f_ru_alpha_1_ex(#cV_ru_mplane_{ii}#)$ ) ) / 180.
               )
             )
-          )       
+          )
           +
             $f_ru_ratio(#cV_ru_mplane_{ii}#)$
-              * 
-                (                                       
+              *
+                (
                   (
                     ( $f_ru_M_ex(#cV_ru_mplane_{ii}#)$ + 1 ) * $f_ru_M(#cV_ru_mplane_{ii}#)$
                   )
@@ -109,7 +109,7 @@
                       _pi * ( $f_ru_alpha_1(#cV_ru_mplane_{ii}#)$ * ( 1 + $f_ru_alpha_1_ex(#cV_ru_mplane_{ii}#)$ ) ) / 180.
                     )
                   )
-                )       
+                )
         "
         targetLength="$f_ru_bladeLength(#cV_ru_mplane_{ii}#)$"
         targetLengthTolerance=".01"
@@ -137,7 +137,7 @@
 <!--
 !
 !
-meanline as 3d function f:(u)->(phiR, m, s)  
+meanline as 3d function f:(u)->(phiR, m, s)
 !
 !
 -->
@@ -173,7 +173,7 @@ meanline as 3d function f:(u)->(phiR, m, s)
       <x_one name="xx" min="0." max="1."/>
     </builder>
   </function>
-  
+
 <!--
 !
 !
@@ -190,13 +190,3 @@ meanline as 3d function f:(u)->(phiR, m, s)
   </function>
 
 </ru_meanline2d>
-
-
-
-
-
-
-
-
-
-

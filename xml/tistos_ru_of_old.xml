@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="ISO-8859-1"?>
 <tistos_ru_of>
         <replace variable="ii" values="{n}{tl}{vl}">
-        <case 
-        name="ofOpenFOAMCase" 
+        <case
+        name="ofOpenFOAMCase"
         label="tistos_ru_of_{ii}"
         noWriteRule="
         {
@@ -14,7 +14,7 @@
         }
         "
         dictRule="
-                controlDict 
+                controlDict
                 {
                 dtOOFileName      &quot;system/controlDict&quot;;
                                         application       simpleFoam;
@@ -23,7 +23,7 @@
                                         stopAt            endTime;
                                         endTime           1000;
                                         deltaT            1;
-                                        writeInterval     500;  
+                                        writeInterval     500;
                                         runTimeModifiable yes;
                                         writeFormat       binary;
                                         functions {
@@ -101,7 +101,7 @@
         }
 
         };
-        
+
         mappedFieldFixedValue
         {
             pathToData      &quot;../boundaryData_RU_INLET/{ii}/boundaryData&quot;;
@@ -166,7 +166,7 @@
                                                 default         no;
                                                 p;
                                         }
-                        
+
                                         wallDist
                                         {
                                             method          meshWave;
@@ -381,10 +381,3 @@
         </replace>
 
 </tistos_ru_of>
-
-
-
-
-
-
-

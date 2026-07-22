@@ -11,13 +11,13 @@
     label="cV_ru_meshBlockThickness" name="sliderFloatParam" value="0.01" min="0.001" max="10.00"
   />
 
-  <vectorReplace 
-    variables="{ii}{jj}" 
+  <vectorReplace
+    variables="{ii}{jj}"
     values="
       {{cV_ruWithRoundingBlade_meshBlockThickness}{cV_ru_meshBlockThickness}}
       {{cV_ruWithRoundingRounding_meshBlockThickness}{cV_ru_meshBlockThickness}}
     ">
-    <constValue 
+    <constValue
       label="{ii}" name="constrainedFloatParam" value="#{jj}#" min="0.001" max="10.00"
     />
   </vectorReplace>
@@ -80,6 +80,3 @@
 
 
 </ru_bladeRunnerMeshBlock2d>
-
-
-

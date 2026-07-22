@@ -78,9 +78,9 @@
 -->
   <part label="baseContainer_ru_channel">
     <builder name="baseContainer">
-      <transformer 
-        label="ru_uVw_phirMs" 
-        name="uVw_phirMs" 
+      <transformer
+        label="ru_uVw_phirMs"
+        name="uVw_phirMs"
         part_label="rM2dTo3d_ru_channel"
         number_points_two="31"
         number_points_three="11"
@@ -89,8 +89,3 @@
   </part>
 
 </ru_channel>
-
-
-
-
-

@@ -29,7 +29,7 @@ for i in "_n_";do
     sed -i "s/numberOfSubdomains.*;/numberOfSubdomains $procPerJob;/" system/decomposeParDict
     sed -i "s/method.*;/method scotch;/" system/decomposeParDict
     decomposePar -fileHandler collated > log.decomposePar 2>&1
-    
+
 
 
     sed -e 's%^[ \t]*writeInterval.*%writeInterval 100;%g' -i system/controlDict
@@ -50,5 +50,3 @@ for i in "_n_";do
 
     rm -rf processor*
 done
-
-

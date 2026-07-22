@@ -60,7 +60,7 @@
 !
 !
 -->
-  
+
   <constValue name="sliderFloatParam" label="cV_ru_firstElementSize_17" value="0.003" min="0.0001" max="1.0"/>
   <constValue name="sliderFloatParam" label="cV_ru_firstElementSize_18" value="0.012" min="0.0001" max="1.0"/>
 
@@ -71,7 +71,7 @@
       c="{.5}{.5}{-1.}{2.}"
     />
   </function>
-  
+
   <function label="aF_ru_gridGradingSpline_18">
     <builder
       name="scaTanhGradingOneDAFXmlBuilder[]"
@@ -106,8 +106,8 @@
 
     <bVObserver name="bVONameRegions" regionLabel=""/>
 
-    <bVObserver 
-      name="bVOAnalyticGeometryToFace" 
+    <bVObserver
+      name="bVOAnalyticGeometryToFace"
       analyticGeometry="
         {aS_ru_blade_rot}{aS_ru_hub}{aS_ru_shroud}
         {aS_ru_inlet_full}{aS_ru_outlet_full}
@@ -116,8 +116,8 @@
       facesPerEntry=""
     />
 
-    <bVObserver 
-      name="bVOAddFace" 
+    <bVObserver
+      name="bVOAddFace"
       regionLabel="R_0"
       faceLabel="
         {R_1->BACK}{R_2->BACK}{R_3->BACK}{R_4->BACK}{R_5->BACK}
@@ -136,7 +136,7 @@
 
     <bVObserver name="bVOSetPrescribedMeshSizeAtPoints" meshSize="#cV_ru_charLMin#*#cV_ru_charCLMax#"/>
 
-    <bVObserver 
+    <bVObserver
       name="bVOSetNElements"
       faceLabel="{R_0->FRONT}"
       numberElements="{0}{#cV_ru_nElemSpanwiseBlade#}{0}{#cV_ru_nElemSpanwiseBlade#}"
@@ -148,7 +148,7 @@
       numberElements="{0}{#cV_ru_nElemSpanwiseBlade#}{0}{#cV_ru_nElemSpanwiseBlade#}"
     />
 
-    <bVObserver 
+    <bVObserver
       name="bVOTransfiniteRegions"
       regionLabel="{R_1}{R_3}"
       numberElements="{#cV_ru_nElemTangentialBlade#}{#cV_ru_nElemNormalBlade#}{#cV_ru_nElemSpanwiseBlade#}"
@@ -160,18 +160,18 @@
       numberElements="{#cV_ru_nElemTangentialTip#}{#cV_ru_nElemNormalBlade#}{#cV_ru_nElemSpanwiseBlade#}"
     />
 
-    <bVObserver 
+    <bVObserver
       name="bVOTransfiniteRegions"
       regionLabel="{R_4}{R_5}"
       numberElements="{#cV_ru_nElemTrailingBlade#}{#cV_ru_nElemNormalBlade#}{#cV_ru_nElemSpanwiseBlade#}"
     />
 
-    <bVObserver 
+    <bVObserver
       name="bVOSetGradingToFaceRule"
       rule="
            {:*blade*::*::6::1:}
            {:*blade*::*blade*::0::1:}
-           {:*hub*::*shroud*::3::1:}                               
+           {:*hub*::*shroud*::3::1:}
            "
     />
 
@@ -187,7 +187,7 @@
            "
       grading="{1}{1}{1}{1}"
     />
-    
+
     <bVObserver
       name="bVOSetGrading"
       edgeLabel="
@@ -201,39 +201,39 @@
       grading="{1}{1}{1}{1}"
     />
 
-    <bVObserver 
+    <bVObserver
       name="bVOSetPrescribedFirstElementSize"
       type="3"
       gradingLabel="aF_ru_gridGradingSpline_3"
       firstElementSize="#cV_ru_firstElementSize#"
     />
 
-    <bVObserver 
+    <bVObserver
       name="bVOSetPrescribedFirstElementSize"
       type="6"
       gradingLabel="aF_ru_gridGradingSpline_6"
       firstElementSize="#cV_ru_firstElementSize#"
     />
 
-    <bVObserver 
+    <bVObserver
       name="bVOSetPrescribedFirstElementSize"
       type="17"
       gradingLabel="aF_ru_gridGradingSpline_17"
       firstElementSize="#cV_ru_firstElementSize_17#"
     />
-    
-    <bVObserver 
+
+    <bVObserver
       name="bVOSetPrescribedFirstElementSize"
       type="18"
       gradingLabel="aF_ru_gridGradingSpline_18"
       firstElementSize="#cV_ru_firstElementSize_18#"
     />
 
-    <bVObserver 
+    <bVObserver
       name="bVOReadMSH" filename="" mustRead="false"
     />
 
-    <bVObserver 
+    <bVObserver
       name="bVOSetRotationalPeriodicity"
       faceMaster="R_0->WEST"
       faceSlave="R_0->EAST"
@@ -289,7 +289,7 @@
       <dtMeshOperator
         name="dtMeshGRegion"
         label="dtMeshGRegion"
-        minQShapeMetric="0.00" 
+        minQShapeMetric="0.00"
         relax="0.1"
         nPyramidOpenSteps="10"
         nSmooths="3"
@@ -343,8 +343,8 @@
               "
     />
 
-    <bVObserver 
-      name="bVORemoveElements" 
+    <bVObserver
+      name="bVORemoveElements"
       label="
             {}
             "
@@ -411,27 +411,3 @@
   </boundedVolume>
 
 </ru_gridMesh>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

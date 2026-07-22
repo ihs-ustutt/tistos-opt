@@ -16,13 +16,13 @@
       </builder>
     </part>
   </replace>
-    
-	<plugin 
-		name="analyticGeometryToCSV" 
+
+	<plugin
+		name="analyticGeometryToCSV"
 		label="csv_meanplane"
     numPoints="{10}{20}"
 	>
-    <analyticGeometry label="aS_ru_meanplane_rot"/>    
+    <analyticGeometry label="aS_ru_meanplane_rot"/>
   </plugin>
 <!--
 !
@@ -93,7 +93,7 @@
 !   - add one point between te and outlet to improve domain geometry
 !
 -->
-  
+
   <constValue
     label="cV_ru_gridChannel_out_u_ext"
     name="sliderFloatParam"
@@ -119,7 +119,7 @@
 !
 !
 ! put inner six points of channel on meanplane
-! 
+!
 !
 -->
 
@@ -193,11 +193,11 @@
                 "
 
   />
-  
+
   <replace variable="ii" values="{0.0}{0.5}{1.0}">
     <part label="aS_ru_blade_rot_v{ii}">
       <builder name="analyticGeometry">
-        <transformer 
+        <transformer
           name="pickMap2dTo3dRangePercent"
           parameter_percent_two="{ii}"
         />
@@ -253,7 +253,7 @@
         </builder>
       </part>
     </replace>
-  </replace> 
+  </replace>
 
   <replace variable="ii" values="{ruWithRoundingRounding}{ruWithRoundingBlade}">
     <replace variable="jj" values="{te_0}{te_1}{0_0}{0_2}{le_0}{le_1}">
@@ -266,14 +266,3 @@
   </replace>
 
 </ru_gridChannel>
-
-
-
-
-
-
-
-
-
-
-

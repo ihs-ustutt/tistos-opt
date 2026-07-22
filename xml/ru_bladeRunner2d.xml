@@ -88,7 +88,7 @@
           skinOrderMax="2"
           skinNIterations="0"
           closeU="true"
-          closeSmooth=".5"  
+          closeSmooth=".5"
         >
           <option name="debug" value="true"/>
         </transformer>
@@ -116,7 +116,7 @@
       name="sliderFloatParam"
       value="0.15" min="0.001" max="10.0"
     />
-    
+
     <vectorReplace
       variables="{vv}{dd}{nn}"
       values="
@@ -208,4 +208,3 @@
   </replace>
 
 </ru_bladeRunner2d>
-
