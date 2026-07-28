@@ -8,6 +8,7 @@
 #
 foamCaseDir=$1
 procPerJob=$2
+shift 2
 
 
 for i in "_n_";do
@@ -40,7 +41,7 @@ for i in "_n_";do
     sed -e 's%cellL%faceL%g' -i system/fvSchemes
     #mpirun $executionnHost $procPerJob simpleFoam -parallel -fileHandler collated > log.simpleFoam 2>&1
     if [ "$procPerJob" -gt 1 ]; then
-        mpiexec -n "$procPerJob" simpleFoam -parallel -fileHandler collated > log.mpiexec 2>&1
+        "$@" simpleFoam -parallel -fileHandler collated > log.simpleFoam 2>&1
     else
         simpleFoam > log.simpleFoam 2>&1
     fi
@@ -51,9 +52,9 @@ for i in "_n_";do
     sed -e 's%faceL%cellL%g' -i system/fvSchemes
     #mpirun $executionnHost $procPerJob simpleFoam -parallel -fileHandler collated > log.simpleFoam.2 2>&1
     if [ "$procPerJob" -gt 1 ]; then
-        mpiexec -n "$procPerJob" simpleFoam -parallel -fileHandler collated > log.mpiexec 2>&1
+        "$@" simpleFoam -parallel -fileHandler collated > log.simpleFoam.2 2>&1
     else
-        simpleFoam > log.simpleFoam 2>&1
+        simpleFoam > log.simpleFoam.2 2>&1
     fi
 
     if [ "$procPerJob" -gt 1 ]; then

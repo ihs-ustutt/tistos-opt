@@ -1,7 +1,11 @@
 import json
+import os
 import re
+import subprocess
 import xml.etree.ElementTree as ET
 from pathlib import Path
+
+import pytest
 
 import tistos_opt.runtime as runtime
 import tistos_opt.runtime_check as runtime_check
@@ -12,12 +16,14 @@ from tistos_opt.worker import main as worker_main
 
 
 def test_case_exposes_all_legacy_parameters_in_order():
-    space = TistosCase().parameter_space({})
+    case = TistosCase()
+    space = case.parameter_space({})
 
     assert len(space.names) == 30
     assert space.names == tuple(parameter.name for parameter in PARAMETERS)
     assert space.lower_bounds[:3] == (-0.155, -0.19, -0.19)
     assert space.upper_bounds[-3:] == (0.6, 0.6, 0.6)
+    assert case.worker_placement() == "controller"
 
 
 def test_parameter_labels_exist_in_the_state_template():
@@ -44,9 +50,10 @@ def test_runtime_maps_parameters_and_resources_without_cfd(
 
     class FakeImplementation:
         @staticmethod
-        def runTistos(vector, state):
+        def runTistos(vector, state, *, solver_launcher):
             observed["vector"] = vector
             observed["state"] = state
+            observed["solver_launcher"] = solver_launcher
             return 1.25, {"component": 2.5}, state, {"status": "done"}
 
     monkeypatch.setattr(runtime, "_stage_case", lambda scratch: work_dir)
@@ -64,6 +71,14 @@ def test_runtime_maps_parameters_and_resources_without_cfd(
         "context": {
             "scratch_dir": str(tmp_path / "scratch"),
             "resources": {"mpi_ranks": 4},
+            "execution": {
+                "backend": "slurm",
+                "mpi_launcher": [
+                    "srun",
+                    "--exclusive",
+                    "--ntasks=4",
+                ],
+            },
         },
     }
 
@@ -72,8 +87,37 @@ def test_runtime_maps_parameters_and_resources_without_cfd(
     assert objective == 1.25
     assert observed["vector"] == [values[item.name] for item in PARAMETERS]
     assert re.fullmatch(r"TISTOS_\d+", observed["state"])
+    assert observed["solver_launcher"] == [
+        "srun",
+        "--exclusive",
+        "--ntasks=4",
+    ]
     assert metadata["state"] == observed["state"]
     assert metadata["fitness_components"] == {"component": 2.5}
+
+
+def test_runtime_defaults_old_requests_to_local_mpiexec(tmp_path):
+    request = {
+        "context": {
+            "scratch_dir": str(tmp_path),
+            "resources": {"mpi_ranks": 2},
+        }
+    }
+
+    assert runtime._solver_launcher(request, 2) == ["mpiexec", "-n", "2"]
+
+
+def test_runtime_rejects_invalid_backend_solver_launcher(tmp_path):
+    request = {
+        "context": {
+            "scratch_dir": str(tmp_path),
+            "resources": {"mpi_ranks": 2},
+            "execution": {"backend": "slurm", "mpi_launcher": "srun"},
+        }
+    }
+
+    with pytest.raises(TypeError, match="must be a string list"):
+        runtime._solver_launcher(request, 2)
 
 
 def test_stage_case_copies_runtime_assets(tmp_path):
@@ -92,6 +136,68 @@ def test_stage_case_copies_runtime_assets(tmp_path):
         / "U"
     ).is_file()
     assert not list(work_dir.rglob("*.pyc"))
+
+
+def test_legacy_shell_uses_injected_solver_launcher(tmp_path):
+    case_dir = tmp_path / "case"
+    system_dir = case_dir / "system"
+    constant_dir = case_dir / "constant"
+    system_dir.mkdir(parents=True)
+    constant_dir.mkdir()
+    (system_dir / "controlDict").write_text(
+        "writeInterval 1;\nendTime 1;\n", encoding="utf-8"
+    )
+    (system_dir / "fvSchemes").write_text("cellL\n", encoding="utf-8")
+    (system_dir / "decomposeParDict").write_text(
+        "numberOfSubdomains 1;\nmethod simple;\n", encoding="utf-8"
+    )
+    (constant_dir / "turbulenceProperties").write_text(
+        "turbulence on;\n", encoding="utf-8"
+    )
+
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    no_op = "#!/bin/sh\nexit 0\n"
+    for name in ("checkMesh", "decomposePar", "reconstructPar"):
+        executable = bin_dir / name
+        executable.write_text(no_op, encoding="utf-8")
+        executable.chmod(0o755)
+
+    calls_path = tmp_path / "solver-calls"
+    launcher = bin_dir / "backend-launcher"
+    launcher.write_text(
+        '#!/bin/sh\nprintf "%s\\n" "$*" >> "$SOLVER_CALLS"\n',
+        encoding="utf-8",
+    )
+    launcher.chmod(0o755)
+    environment = os.environ.copy()
+    environment["PATH"] = f"{bin_dir}{os.pathsep}{environment['PATH']}"
+    environment["SOLVER_CALLS"] = str(calls_path)
+    script = (
+        runtime._package_root()
+        / "_legacy"
+        / "tistos_files"
+        / "sbatch.tistos_ru_of.sh"
+    )
+
+    subprocess.run(
+        [
+            "sh",
+            "-e",
+            str(script),
+            str(case_dir),
+            "2",
+            str(launcher),
+            "--from-backend",
+        ],
+        check=True,
+        env=environment,
+    )
+
+    assert calls_path.read_text(encoding="utf-8").splitlines() == [
+        "--from-backend simpleFoam -parallel -fileHandler collated",
+        "--from-backend simpleFoam -parallel -fileHandler collated",
+    ]
 
 
 def test_worker_writes_a_structured_success(monkeypatch, tmp_path):

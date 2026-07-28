@@ -28,7 +28,7 @@ logger = import_logger()
 
 
 class tistos:
-    def __init__(self, x, state):
+    def __init__(self, x, state, solver_launcher=None):
         self.state = state
         self.history_ = {}
         self.history_["DateOfBirth"] = time.ctime()
@@ -37,6 +37,7 @@ class tistos:
         self.stateNumber = int(self.state.split("_")[-1])
         self.caseName = "tistos_ru_of"
         self.procPerJob = int(os.environ.get("FLOW_OPT_MPI_RANKS", "1"))
+        self.solverLauncher = list(solver_launcher or [])
         self.cfdOk_ = False
         # self.wd = os.environ["TMPDIR"]
         self.wd = "./"
@@ -173,6 +174,7 @@ class tistos:
                 os.path.join(mainDir, "tistos_files/sbatch.tistos_ru_of.sh"),
                 foamCaseDir,
                 str(procPerJob),
+                *self.solverLauncher,
             ]
             logger.info(f"Start CFD for {state}.")
             result = subprocess.run(
@@ -253,8 +255,8 @@ class tistos:
         return self.history_
 
 
-def runTistos(x, state):
-    ti = tistos(x, state)
+def runTistos(x, state, solver_launcher=None):
+    ti = tistos(x, state, solver_launcher=solver_launcher)
     state = ti.state
     ti.pre()
     ti.mesh()

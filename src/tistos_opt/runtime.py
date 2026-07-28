@@ -39,13 +39,31 @@ def evaluate(request: dict[str, Any]) -> tuple[float, dict[str, Any]]:
 
     with _working_directory(work_dir):
         module = _load_implementation(work_dir)
-        fitness, extra, legacy_state, history = module.runTistos(vector, state)
+        fitness, extra, legacy_state, history = module.runTistos(
+            vector,
+            state,
+            solver_launcher=_solver_launcher(request, mpi_ranks),
+        )
 
     return float(fitness), {
         "state": legacy_state,
         "fitness_components": _json_compatible(extra),
         "history": _json_compatible(history),
     }
+
+
+def _solver_launcher(request: dict[str, Any], mpi_ranks: int) -> list[str]:
+    """Return the backend-provided command prefix for ``simpleFoam``."""
+
+    execution = request["context"].get("execution")
+    if execution is None:
+        return ["mpiexec", "-n", str(mpi_ranks)] if mpi_ranks > 1 else []
+    launcher = execution.get("mpi_launcher")
+    if not isinstance(launcher, list) or not all(
+        isinstance(item, str) and item for item in launcher
+    ):
+        raise TypeError("context.execution.mpi_launcher must be a string list")
+    return list(launcher)
 
 
 def _stage_case(scratch_dir: Path) -> Path:
