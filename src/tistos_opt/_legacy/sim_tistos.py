@@ -231,31 +231,34 @@ class tistos:
         return fit, fit_extra
 
     def delete(self):
-        state = self.state
-        case = self.caseName
-        copy_failed_logs = True
-        ### delete files ###
-        try:
-            fileList = glob.glob(state + ".*", recursive=False)
-            fileList = fileList + glob.glob(state + "_*", recursive=False)
-            for i in ["_n_"]:
-                fileList.append(case + i + state)
-            for filePath in fileList:
-                try:
-                    os.remove(filePath)
-                except IsADirectoryError:
-                    shutil.rmtree(filePath)
-        except Exception as e:
-            if self.cfdOk_:
-                logger.info("Catch exception in delete: %s", e)
-            else:
-                pass
+        cleanupTistos(
+            self.state,
+            case=self.caseName,
+            log_errors=self.cfdOk_,
+        )
 
     def get_history(self):
         return self.history_
 
 
-def runTistos(x, state, solver_launcher=None):
+def cleanupTistos(state, case="tistos_ru_of", log_errors=True):
+    """Delete generated files for one state while retaining staged assets."""
+    try:
+        fileList = glob.glob(state + ".*", recursive=False)
+        fileList = fileList + glob.glob(state + "_*", recursive=False)
+        for i in ["_n_"]:
+            fileList.append(case + i + state)
+        for filePath in fileList:
+            try:
+                os.remove(filePath)
+            except IsADirectoryError:
+                shutil.rmtree(filePath)
+    except Exception as e:
+        if log_errors:
+            logger.info("Catch exception in delete: %s", e)
+
+
+def runTistos(x, state, solver_launcher=None, *, cleanup=True):
     ti = tistos(x, state, solver_launcher=solver_launcher)
     state = ti.state
     ti.pre()
@@ -270,7 +273,8 @@ def runTistos(x, state, solver_launcher=None):
     logger.info(f"Proxy: Finished Running CFD State {state}.")
     fit, fit_extra = ti.evaluate()
     logger.info(f"Proxy: Finished evaluate: {fit}")
-    ti.delete()
+    if cleanup:
+        ti.delete()
     history = ti.get_history()
     for key in fit_extra:
         if type(fit_extra[key]) == np.float64:

@@ -44,6 +44,26 @@ Each evaluation receives its own scratch directory. The bundled legacy code,
 geometry XML, and OpenFOAM inlet boundary data are copied there before dtOO is
 loaded, so concurrent candidates do not share mutable case files.
 
+### Post-process a completed case
+
+Extensions that need CFD files before cleanup can use the context-managed
+runtime API:
+
+```python
+from tistos_opt import evaluation_session
+
+with evaluation_session(request) as result:
+    consume_flow_fields(
+        case_dir=result.case_dirs["n"],
+        mesh_path=result.mesh_path,
+    )
+```
+
+Generated case files remain available inside the context and are cleaned after
+a successful exit. CFD failures and exceptions raised by the consumer preserve
+scratch files for diagnosis. The paths exposed by `result` must not be used
+after leaving the context.
+
 ## Slurm execution
 
 Select the backend in either candidate or optimization configuration:

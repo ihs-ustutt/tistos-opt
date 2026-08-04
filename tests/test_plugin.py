@@ -50,11 +50,16 @@ def test_runtime_maps_parameters_and_resources_without_cfd(
 
     class FakeImplementation:
         @staticmethod
-        def runTistos(vector, state, *, solver_launcher):
+        def runTistos(vector, state, *, solver_launcher, cleanup):
             observed["vector"] = vector
             observed["state"] = state
             observed["solver_launcher"] = solver_launcher
+            observed["cleanup"] = cleanup
             return 1.25, {"component": 2.5}, state, {"status": "done"}
+
+        @staticmethod
+        def cleanupTistos(state):
+            observed["cleaned_state"] = state
 
     monkeypatch.setattr(runtime, "_stage_case", lambda scratch: work_dir)
     monkeypatch.setattr(
@@ -92,8 +97,132 @@ def test_runtime_maps_parameters_and_resources_without_cfd(
         "--exclusive",
         "--ntasks=4",
     ]
+    assert observed["cleanup"] is False
+    assert observed["cleaned_state"] == observed["state"]
     assert metadata["state"] == observed["state"]
     assert metadata["fitness_components"] == {"component": 2.5}
+
+
+def test_evaluation_session_exposes_files_until_successful_exit(
+    monkeypatch, tmp_path
+):
+    work_dir = tmp_path / "work"
+    work_dir.mkdir()
+    observed = {}
+
+    class FakeImplementation:
+        @staticmethod
+        def runTistos(vector, state, *, solver_launcher, cleanup):
+            del vector, solver_launcher
+            assert cleanup is False
+            (work_dir / f"tistos_ru_of_n_{state}").mkdir()
+            (work_dir / f"{state}_ru_gridGmsh.msh").touch()
+            return 0.5, {}, state, {}
+
+        @staticmethod
+        def cleanupTistos(state):
+            observed["case_existed_at_cleanup"] = (
+                work_dir / f"tistos_ru_of_n_{state}"
+            ).is_dir()
+            observed["cleaned_state"] = state
+
+    monkeypatch.setattr(runtime, "_stage_case", lambda scratch: work_dir)
+    monkeypatch.setattr(
+        runtime,
+        "_load_implementation",
+        lambda staged_work_dir: FakeImplementation,
+    )
+    request = _runtime_request(tmp_path)
+
+    with runtime.evaluation_session(request) as result:
+        assert result.case_dirs["n"].is_dir()
+        assert result.mesh_path.is_file()
+        assert "cleaned_state" not in observed
+
+    assert observed["case_existed_at_cleanup"] is True
+    assert observed["cleaned_state"] == result.state
+
+
+def test_evaluation_session_preserves_files_when_consumer_fails(
+    monkeypatch, tmp_path
+):
+    work_dir = tmp_path / "work"
+    work_dir.mkdir()
+    observed = {}
+
+    class FakeImplementation:
+        @staticmethod
+        def runTistos(vector, state, *, solver_launcher, cleanup):
+            del vector, solver_launcher, cleanup
+            (work_dir / f"tistos_ru_of_n_{state}").mkdir()
+            return 0.5, {}, state, {}
+
+        @staticmethod
+        def cleanupTistos(state):
+            observed["cleaned_state"] = state
+
+    monkeypatch.setattr(runtime, "_stage_case", lambda scratch: work_dir)
+    monkeypatch.setattr(
+        runtime,
+        "_load_implementation",
+        lambda staged_work_dir: FakeImplementation,
+    )
+    request = _runtime_request(tmp_path)
+
+    with pytest.raises(RuntimeError, match="tensor extraction failed"):
+        with runtime.evaluation_session(request) as result:
+            raise RuntimeError("tensor extraction failed")
+
+    assert result.case_dirs["n"].is_dir()
+    assert "cleaned_state" not in observed
+
+
+def test_evaluation_session_preserves_files_when_cfd_fails(
+    monkeypatch, tmp_path
+):
+    work_dir = tmp_path / "work"
+    work_dir.mkdir()
+    observed = {}
+
+    class FakeImplementation:
+        @staticmethod
+        def runTistos(vector, state, *, solver_launcher, cleanup):
+            del vector, solver_launcher, cleanup
+            (work_dir / f"tistos_ru_of_n_{state}").mkdir()
+            raise RuntimeError("CFD failed")
+
+        @staticmethod
+        def cleanupTistos(state):
+            observed["cleaned_state"] = state
+
+    monkeypatch.setattr(runtime, "_stage_case", lambda scratch: work_dir)
+    monkeypatch.setattr(
+        runtime,
+        "_load_implementation",
+        lambda staged_work_dir: FakeImplementation,
+    )
+    request = _runtime_request(tmp_path)
+
+    with pytest.raises(RuntimeError, match="CFD failed"):
+        with runtime.evaluation_session(request):
+            pass
+
+    assert list(work_dir.glob("tistos_ru_of_n_*"))
+    assert "cleaned_state" not in observed
+
+
+def _runtime_request(tmp_path):
+    values = {
+        parameter.name: (parameter.lower_bound + parameter.upper_bound) / 2
+        for parameter in PARAMETERS
+    }
+    return {
+        "candidate": {"id": "session-test", "parameters": values},
+        "context": {
+            "scratch_dir": str(tmp_path / "scratch"),
+            "resources": {"mpi_ranks": 1},
+        },
+    }
 
 
 def test_runtime_defaults_old_requests_to_local_mpiexec(tmp_path):

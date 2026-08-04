@@ -12,15 +12,47 @@ import shutil
 import sys
 import zlib
 from contextlib import contextmanager
+from dataclasses import dataclass
 from importlib.resources import files
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Any, Iterator, Mapping
 
 from tistos_opt.case import PARAMETERS
 
 
+@dataclass(frozen=True)
+class CompletedTistosEvaluation:
+    """A completed evaluation whose CFD files still exist.
+
+    Files referenced by ``work_dir``, ``case_dirs``, and ``mesh_path`` are only
+    guaranteed to exist inside the surrounding :func:`evaluation_session`.
+    """
+
+    objective: float
+    metadata: dict[str, Any]
+    state: str
+    work_dir: Path
+    case_dirs: Mapping[str, Path]
+    mesh_path: Path
+
+
 def evaluate(request: dict[str, Any]) -> tuple[float, dict[str, Any]]:
     """Evaluate one candidate with the supplied TiStoS implementation."""
+
+    with evaluation_session(request) as result:
+        return result.objective, result.metadata
+
+
+@contextmanager
+def evaluation_session(
+    request: dict[str, Any],
+) -> Iterator[CompletedTistosEvaluation]:
+    """Evaluate a candidate and defer cleanup until its consumer succeeds.
+
+    A successful context exit removes generated TiStoS files using the legacy
+    cleanup routine. CFD failures and exceptions raised by the consumer leave
+    scratch files intact for diagnosis or recovery.
+    """
 
     scratch_dir = Path(request["context"]["scratch_dir"]).resolve()
     scratch_dir.mkdir(parents=True, exist_ok=True)
@@ -43,13 +75,33 @@ def evaluate(request: dict[str, Any]) -> tuple[float, dict[str, Any]]:
             vector,
             state,
             solver_launcher=_solver_launcher(request, mpi_ranks),
+            cleanup=False,
         )
 
-    return float(fitness), {
+    completed_state = str(legacy_state)
+    metadata = {
         "state": legacy_state,
         "fitness_components": _json_compatible(extra),
         "history": _json_compatible(history),
     }
+    result = CompletedTistosEvaluation(
+        objective=float(fitness),
+        metadata=metadata,
+        state=completed_state,
+        work_dir=work_dir,
+        case_dirs={
+            "n": work_dir / f"tistos_ru_of_n_{completed_state}",
+        },
+        mesh_path=work_dir / f"{completed_state}_ru_gridGmsh.msh",
+    )
+
+    try:
+        yield result
+    except BaseException:
+        raise
+    else:
+        with _working_directory(work_dir):
+            module.cleanupTistos(completed_state)
 
 
 def _solver_launcher(request: dict[str, Any], mpi_ranks: int) -> list[str]:
