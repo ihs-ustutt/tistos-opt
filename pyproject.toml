@@ -78,4 +78,19 @@ extend-exclude = ["src/tistos_opt/_legacy", "src/tistos_opt/_case_data"]
 force-exclude = true
 
 [tool.ruff.lint]
-select = ["E", "F", "I"]
+select = [
+    "B",   # flake8-bugbear
+    "D",   # pydocstyle
+    "E",   # pycodestyle error rules
+    "F",   # Pyflakes
+    "I",   # isort
+    "SIM", # flake8-simplify
+    "UP",  # pyupgrade
+    "RUF", # Ruff-specific rules
+]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["D"]

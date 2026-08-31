@@ -8,7 +8,6 @@ from tistos_opt.runtime import configure_turbulent, finalize, prepare
 
 def main(argv: list[str] | None = None) -> int:
     """Run one stage selected by the hydroflow-opt evaluation plan."""
-
     parser = argparse.ArgumentParser(prog="python -m tistos_opt.stages")
     subparsers = parser.add_subparsers(dest="stage", required=True)
 

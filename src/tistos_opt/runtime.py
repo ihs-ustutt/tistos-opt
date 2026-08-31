@@ -12,10 +12,11 @@ import re
 import shutil
 import subprocess
 import sys
+from collections.abc import Iterator
 from contextlib import contextmanager
 from importlib.resources import files
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Any
 
 from hydroflow_opt.models import EvaluationResult
 from hydroflow_opt.results import write_result
@@ -25,7 +26,6 @@ from tistos_opt.case import PARAMETERS, _state_label
 
 def prepare(request_path: Path, state_path: Path) -> None:
     """Generate and decompose one case, ready for the laminar solve."""
-
     request = _read_json(request_path)
     candidate = request["candidate"]
     candidate_id = str(candidate["id"])
@@ -79,7 +79,6 @@ def prepare(request_path: Path, state_path: Path) -> None:
 
 def configure_turbulent(state_path: Path) -> None:
     """Switch a prepared case from laminar to turbulent settings."""
-
     state = _read_state(state_path)
     _configure_turbulent(Path(state["case_dir"]))
 
@@ -90,7 +89,6 @@ def finalize(
     result_path: Path,
 ) -> None:
     """Reconstruct, evaluate, persist, and then clean a completed case."""
-
     request = _read_json(request_path)
     state_data = _read_state(state_path)
     candidate_id = str(request["candidate"]["id"])
@@ -194,7 +192,6 @@ def _run_case_command(
 
 def _stage_case(scratch_dir: Path) -> Path:
     """Copy immutable package resources into a candidate-local work tree."""
-
     work_dir = scratch_dir / "tistos"
     if work_dir.exists():
         shutil.rmtree(work_dir)
@@ -250,7 +247,6 @@ def _package_root() -> Path:
 
 def _implementation_path() -> Path:
     """Return the bundled legacy entry point for diagnostics."""
-
     return _package_root() / "_legacy" / "sim_tistos.py"
 
 

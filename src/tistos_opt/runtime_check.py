@@ -19,7 +19,6 @@ class CheckResult:
 
 def run_checks() -> list[CheckResult]:
     """Run package, dtOO, OpenFOAM, and MPI readiness checks."""
-
     return [
         _check_import("dtOOPythonSWIG"),
         _check_import("pyDtOO"),
@@ -37,7 +36,6 @@ def run_checks() -> list[CheckResult]:
 
 def failed_required_count(results: list[CheckResult]) -> int:
     """Count required checks that failed."""
-
     return sum(
         1 for result in results if result.required and not result.passed
     )
@@ -49,7 +47,6 @@ def format_report(
     environ: dict[str, str],
 ) -> str:
     """Format runtime check results for terminal output."""
-
     lines = ["tistos-opt runtime check", ""]
     for result in results:
         if result.passed:
@@ -84,7 +81,7 @@ def format_report(
 def _check_import(module_name: str) -> CheckResult:
     try:
         import_module(module_name)
-    except Exception as exc:  # noqa: BLE001 - diagnostic boundary.
+    except Exception as exc:
         return CheckResult(
             name=f"import {module_name}",
             passed=False,

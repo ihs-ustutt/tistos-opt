@@ -83,7 +83,6 @@ class TistosCase:
 
     def parameter_space(self, options: dict[str, Any]) -> ParameterSpace:
         """Return the physical optimization bounds for TiStoS."""
-
         del options
         return ParameterSpace(
             names=tuple(parameter.name for parameter in PARAMETERS),
@@ -102,7 +101,6 @@ class TistosCase:
         resources: ResourceRequest,
     ) -> EvaluationPlan:
         """Return the serial preparation and parallel solver stages."""
-
         state = _state_label(candidate.id)
         work_dir = paths.scratch_dir / "tistos"
         case_dir = work_dir / f"tistos_ru_of_n_{state}"
@@ -166,6 +164,5 @@ class TistosCase:
 
 def _state_label(candidate_id: str) -> str:
     """Create the numeric-suffix state label required by legacy TiStoS."""
-
     number = zlib.crc32(candidate_id.encode("utf-8"))
     return f"TISTOS_{number}"
