@@ -35,6 +35,11 @@ dev = [
     "pytest-cov",
     "ruff",
 ]
+docs = [
+    "myst-parser",
+    "sphinx",
+    "sphinx_rtd_theme",
+]
 lint = [
     "mypy",
     "ruff",

@@ -4,6 +4,8 @@
 
 `tistos-opt` packages the TiStoS dtOO/OpenFOAM evaluation as a case plugin for [`hydroflow-opt`](https://pypi.org/project/hydroflow-opt/). The optimizer owns candidate generation, concurrency, resource accounting, and result storage; this package supplies the 30-dimensional parameter space and a staged CFD evaluation plan.
 
+The [documentation](doc/index.md) describes the parameters, evaluation stages, runtime requirements, configuration, and output files.
+
 ## Installation
 
 Install the Python packages into the environment used by dtOO:
