@@ -49,7 +49,6 @@ tistos = "tistos_opt.case:TistosCase"
 
 [project.scripts]
 tistos-opt = "tistos_opt.cli:main"
-tistos-opt-worker = "tistos_opt.worker:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/tistos_opt"]
@@ -57,8 +56,6 @@ exclude = [
   "src/tistos_opt/_case_data/xml/ru_gridMesh_local.xml",
   "src/tistos_opt/_case_data/xml/tistos_ru_of_old.xml",
   "src/tistos_opt/_legacy/tistos_files/machineSave.xml",
-  "src/tistos_opt/_legacy/tistos_files/run_of.sh",
-  "src/tistos_opt/_legacy/tistos_files/sim_openFoam.py",
 ]
 
 [tool.pytest.ini_options]

@@ -68,11 +68,6 @@ def format_report(
             _format_env("TMPDIR", environ, default="<not set>"),
             _format_env("PYTHONPATH", environ, default="<not set>"),
             _format_env("LD_LIBRARY_PATH", environ, default="<not set>"),
-            _format_env(
-                "FLOW_OPT_MPI_RANKS",
-                environ,
-                default="<not set; hydroflow-opt supplies this>",
-            ),
             "",
         ]
     )
@@ -131,7 +126,6 @@ def _check_case_data() -> CheckResult:
     required_paths = (
         package_root / "_legacy" / "tistos_files" / "machine.xml",
         package_root / "_legacy" / "tistos_files" / "templateState.xml",
-        package_root / "_legacy" / "tistos_files" / "sbatch.tistos_ru_of.sh",
         package_root / "_case_data" / "xml" / "tistos_ru_of.xml",
         package_root
         / "_case_data"

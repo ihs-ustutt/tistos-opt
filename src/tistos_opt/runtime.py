@@ -1,121 +1,195 @@
-"""Runtime bridge to the supplied TiStoS CFD implementation.
+"""Implementation of the explicit TiStoS evaluation stages.
 
-The external dtOO and OpenFOAM runtime is imported only inside an evaluation
-worker. This keeps case discovery and configuration checks lightweight.
+The external dtOO runtime is imported only after a candidate-local copy of the
+supplied case has been created. This keeps plugin discovery lightweight and
+prevents concurrent candidates from sharing mutable files.
 """
 
-from __future__ import annotations
-
 import importlib.util
+import json
 import os
+import re
 import shutil
+import subprocess
 import sys
-import zlib
 from contextlib import contextmanager
-from dataclasses import dataclass
 from importlib.resources import files
 from pathlib import Path
-from typing import Any, Iterator, Mapping
+from typing import Any, Iterator
 
-from tistos_opt.case import PARAMETERS
+from hydroflow_opt.models import EvaluationResult
+from hydroflow_opt.results import write_result
 
-
-@dataclass(frozen=True)
-class CompletedTistosEvaluation:
-    """A completed evaluation whose CFD files still exist.
-
-    Files referenced by ``work_dir``, ``case_dirs``, and ``mesh_path`` are only
-    guaranteed to exist inside the surrounding :func:`evaluation_session`.
-    """
-
-    objective: float
-    metadata: dict[str, Any]
-    state: str
-    work_dir: Path
-    case_dirs: Mapping[str, Path]
-    mesh_path: Path
+from tistos_opt.case import PARAMETERS, _state_label
 
 
-def evaluate(request: dict[str, Any]) -> tuple[float, dict[str, Any]]:
-    """Evaluate one candidate with the supplied TiStoS implementation."""
+def prepare(request_path: Path, state_path: Path) -> None:
+    """Generate and decompose one case, ready for the laminar solve."""
 
-    with evaluation_session(request) as result:
-        return result.objective, result.metadata
-
-
-@contextmanager
-def evaluation_session(
-    request: dict[str, Any],
-) -> Iterator[CompletedTistosEvaluation]:
-    """Evaluate a candidate and defer cleanup until its consumer succeeds.
-
-    A successful context exit removes generated TiStoS files using the legacy
-    cleanup routine. CFD failures and exceptions raised by the consumer leave
-    scratch files intact for diagnosis or recovery.
-    """
-
-    scratch_dir = Path(request["context"]["scratch_dir"]).resolve()
-    scratch_dir.mkdir(parents=True, exist_ok=True)
+    request = _read_json(request_path)
+    candidate = request["candidate"]
+    candidate_id = str(candidate["id"])
+    state = _state_label(candidate_id)
+    parameters = candidate["parameters"]
+    vector = [float(parameters[item.name]) for item in PARAMETERS]
     resources = request["context"]["resources"]
     mpi_ranks = int(resources["mpi_ranks"])
     if mpi_ranks < 1:
         raise ValueError("mpi_ranks must be at least one")
 
+    scratch_dir = Path(request["context"]["scratch_dir"]).resolve()
+    scratch_dir.mkdir(parents=True, exist_ok=True)
     os.environ["TMPDIR"] = str(scratch_dir)
-    os.environ["FLOW_OPT_MPI_RANKS"] = str(mpi_ranks)
     work_dir = _stage_case(scratch_dir)
-    parameters = request["candidate"]["parameters"]
-    vector = [float(parameters[item.name]) for item in PARAMETERS]
-    candidate_id = str(request["candidate"]["id"])
-    state = _state_label(candidate_id)
 
     with _working_directory(work_dir):
-        module = _load_implementation(work_dir)
-        fitness, extra, legacy_state, history = module.runTistos(
-            vector,
-            state,
-            solver_launcher=_solver_launcher(request, mpi_ranks),
-            cleanup=False,
-        )
+        implementation = _load_implementation(work_dir)
+        evaluation = implementation.tistos(vector, state)
+        evaluation.pre()
+        evaluation.mesh()
+        if not evaluation.MeshOk_:
+            raise RuntimeError(f"mesh generation failed for {state}")
+        history = evaluation.get_history()
 
-    completed_state = str(legacy_state)
-    metadata = {
-        "state": legacy_state,
-        "fitness_components": _json_compatible(extra),
-        "history": _json_compatible(history),
-    }
-    result = CompletedTistosEvaluation(
-        objective=float(fitness),
-        metadata=metadata,
-        state=completed_state,
-        work_dir=work_dir,
-        case_dirs={
-            "n": work_dir / f"tistos_ru_of_n_{completed_state}",
+    case_dir = work_dir / f"tistos_ru_of_n_{state}"
+    _run_case_command(case_dir, ["checkMesh"], "log.checkMesh")
+    if mpi_ranks > 1:
+        _configure_decomposition(case_dir, mpi_ranks)
+        _run_case_command(
+            case_dir,
+            ["decomposePar", "-fileHandler", "collated"],
+            "log.decomposePar",
+        )
+    _configure_laminar(case_dir)
+
+    _write_json(
+        state_path,
+        {
+            "candidate_id": candidate_id,
+            "state": state,
+            "vector": vector,
+            "mpi_ranks": mpi_ranks,
+            "work_dir": str(work_dir),
+            "case_dir": str(case_dir),
+            "mesh_path": str(work_dir / f"{state}_ru_gridGmsh.msh"),
+            "history": _json_compatible(history),
         },
-        mesh_path=work_dir / f"{completed_state}_ru_gridGmsh.msh",
     )
 
-    try:
-        yield result
-    except BaseException:
-        raise
-    else:
-        with _working_directory(work_dir):
-            module.cleanupTistos(completed_state)
+
+def configure_turbulent(state_path: Path) -> None:
+    """Switch a prepared case from laminar to turbulent settings."""
+
+    state = _read_state(state_path)
+    _configure_turbulent(Path(state["case_dir"]))
 
 
-def _solver_launcher(request: dict[str, Any], mpi_ranks: int) -> list[str]:
-    """Return the backend-provided command prefix for ``simpleFoam``."""
+def finalize(
+    request_path: Path,
+    state_path: Path,
+    result_path: Path,
+) -> None:
+    """Reconstruct, evaluate, persist, and then clean a completed case."""
 
-    execution = request["context"].get("execution")
-    if execution is None:
-        return ["mpiexec", "-n", str(mpi_ranks)] if mpi_ranks > 1 else []
-    launcher = execution.get("mpi_launcher")
-    if not isinstance(launcher, list) or not all(
-        isinstance(item, str) and item for item in launcher
-    ):
-        raise TypeError("context.execution.mpi_launcher must be a string list")
-    return list(launcher)
+    request = _read_json(request_path)
+    state_data = _read_state(state_path)
+    candidate_id = str(request["candidate"]["id"])
+    if state_data["candidate_id"] != candidate_id:
+        raise ValueError("TiStoS state does not match the candidate request")
+
+    work_dir = Path(state_data["work_dir"])
+    case_dir = Path(state_data["case_dir"])
+    mpi_ranks = int(state_data["mpi_ranks"])
+    state = str(state_data["state"])
+    vector = [float(value) for value in state_data["vector"]]
+    if mpi_ranks > 1:
+        _run_case_command(case_dir, ["reconstructPar"], "log.reconstructPar")
+        for processor_dir in case_dir.glob("processor*"):
+            if processor_dir.is_dir():
+                shutil.rmtree(processor_dir)
+
+    with _working_directory(work_dir):
+        implementation = _load_implementation(work_dir)
+        evaluation = implementation.tistos(vector, state)
+        evaluation.history_.update(state_data.get("history", {}))
+        fitness, extra = evaluation.evaluate()
+        history = evaluation.get_history()
+
+    result = EvaluationResult.success(
+        candidate_id,
+        float(fitness),
+        metadata={
+            "state": state,
+            "fitness_components": _json_compatible(extra),
+            "history": _json_compatible(history),
+        },
+    )
+    write_result(result_path, result)
+
+    with _working_directory(work_dir):
+        implementation.cleanupTistos(state)
+
+
+def _configure_decomposition(case_dir: Path, mpi_ranks: int) -> None:
+    path = case_dir / "system" / "decomposeParDict"
+    _replace_assignment(path, "numberOfSubdomains", str(mpi_ranks))
+    _replace_assignment(path, "method", "scotch")
+
+
+def _configure_laminar(case_dir: Path) -> None:
+    _replace_assignment(case_dir / "system" / "controlDict", "endTime", "100")
+    _replace_assignment(
+        case_dir / "system" / "controlDict", "writeInterval", "100"
+    )
+    _replace_assignment(
+        case_dir / "constant" / "turbulenceProperties",
+        "turbulence",
+        "off",
+    )
+    _replace_text(case_dir / "system" / "fvSchemes", "cellL", "faceL")
+
+
+def _configure_turbulent(case_dir: Path) -> None:
+    _replace_assignment(case_dir / "system" / "controlDict", "endTime", "500")
+    _replace_assignment(
+        case_dir / "system" / "controlDict", "writeInterval", "500"
+    )
+    _replace_assignment(
+        case_dir / "constant" / "turbulenceProperties",
+        "turbulence",
+        "on",
+    )
+    _replace_text(case_dir / "system" / "fvSchemes", "faceL", "cellL")
+
+
+def _replace_assignment(path: Path, name: str, value: str) -> None:
+    content = path.read_text(encoding="utf-8")
+    pattern = re.compile(rf"^(\s*{re.escape(name)}\s+)[^;]+;", re.MULTILINE)
+    updated, count = pattern.subn(rf"\g<1>{value};", content)
+    if count == 0:
+        raise RuntimeError(f"cannot find '{name}' assignment in {path}")
+    path.write_text(updated, encoding="utf-8")
+
+
+def _replace_text(path: Path, old: str, new: str) -> None:
+    content = path.read_text(encoding="utf-8")
+    if old not in content:
+        raise RuntimeError(f"cannot find '{old}' in {path}")
+    path.write_text(content.replace(old, new), encoding="utf-8")
+
+
+def _run_case_command(
+    case_dir: Path, command: list[str], log_name: str
+) -> None:
+    with (case_dir / log_name).open("w", encoding="utf-8") as log:
+        subprocess.run(
+            command,
+            check=True,
+            cwd=case_dir,
+            stdout=log,
+            stderr=subprocess.STDOUT,
+            text=True,
+        )
 
 
 def _stage_case(scratch_dir: Path) -> Path:
@@ -180,11 +254,35 @@ def _implementation_path() -> Path:
     return _package_root() / "_legacy" / "sim_tistos.py"
 
 
-def _state_label(candidate_id: str) -> str:
-    """Create the numeric-suffix state label required by legacy TiStoS."""
+def _read_state(path: Path) -> dict[str, Any]:
+    state = _read_json(path)
+    required = {
+        "candidate_id",
+        "state",
+        "vector",
+        "mpi_ranks",
+        "work_dir",
+        "case_dir",
+    }
+    missing = required.difference(state)
+    if missing:
+        raise ValueError(
+            "TiStoS state is missing: " + ", ".join(sorted(missing))
+        )
+    return state
 
-    number = zlib.crc32(candidate_id.encode("utf-8"))
-    return f"TISTOS_{number}"
+
+def _read_json(path: Path) -> dict[str, Any]:
+    value = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(value, dict):
+        raise TypeError(f"expected a JSON object in {path}")
+    return value
+
+
+def _write_json(path: Path, value: dict[str, Any]) -> None:
+    temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    temporary.write_text(json.dumps(value, indent=2) + "\n", encoding="utf-8")
+    os.replace(temporary, path)
 
 
 def _json_compatible(value: Any) -> Any:

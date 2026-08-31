@@ -2,11 +2,7 @@
 
 [![Build](https://github.com/thomasisensee/tistos-opt/actions/workflows/ci.yml/badge.svg)](https://github.com/thomasisensee/tistos-opt/actions)
 
-`tistos-opt` packages the TiStoS dtOO/OpenFOAM evaluation as a case plugin for
-[`hydroflow-opt`](https://pypi.org/project/hydroflow-opt/). The optimizer owns
-candidate generation, concurrency, resource accounting, and result storage;
-this package supplies the 30-dimensional parameter space and an isolated CFD
-worker.
+`tistos-opt` packages the TiStoS dtOO/OpenFOAM evaluation as a case plugin for [`hydroflow-opt`](https://pypi.org/project/hydroflow-opt/). The optimizer owns candidate generation, concurrency, resource accounting, and result storage; this package supplies the 30-dimensional parameter space and a staged CFD evaluation plan.
 
 ## Installation
 
@@ -16,9 +12,7 @@ Install the Python packages into the environment used by dtOO:
 python -m pip install -e .
 ```
 
-The external runtime must also provide dtOO and its Python bindings,
-OpenFOAM's `simpleFoam` and `checkMesh`, and MPI tools for parallel runs. Check
-the active environment with:
+The external runtime must also provide dtOO and its Python bindings, OpenFOAM's `simpleFoam` and `checkMesh`, and MPI tools for parallel runs. Check the active environment with:
 
 ```bash
 tistos-opt check-runtime
@@ -26,8 +20,7 @@ tistos-opt check-runtime
 
 ## Run the supplied candidate
 
-The candidate configuration reproduces the parameter vector supplied with the
-original case:
+The candidate configuration reproduces the parameter vector supplied with the original case:
 
 ```bash
 hydroflow-opt check examples/tistos_candidate.toml
@@ -40,29 +33,19 @@ Start a pygmo differential-evolution run with:
 hydroflow-opt optimize examples/tistos_optimization.toml
 ```
 
-Each evaluation receives its own scratch directory. The bundled legacy code,
-geometry XML, and OpenFOAM inlet boundary data are copied there before dtOO is
-loaded, so concurrent candidates do not share mutable case files.
+Each evaluation receives its own scratch directory. The bundled legacy code, geometry XML, and OpenFOAM inlet boundary data are copied there before dtOO is loaded, so concurrent candidates do not share mutable case files.
 
-### Post-process a completed case
+## Evaluation stages
 
-Extensions that need CFD files before cleanup can use the context-managed
-runtime API:
+Each candidate is evaluated as five explicit stages:
 
-```python
-from tistos_opt import evaluation_session
+1. `prepare` copies the case, generates geometry and mesh, runs `checkMesh`, decomposes parallel cases, and configures the laminar solve.
+2. `solve-laminar` runs `simpleFoam` to iteration 100.
+3. `configure-turbulent` enables turbulence and changes the end time to 500.
+4. `solve-turbulent` continues the OpenFOAM calculation.
+5. `finalize` reconstructs parallel results, computes the objective, writes the structured result, and cleans generated files after success.
 
-with evaluation_session(request) as result:
-    consume_flow_fields(
-        case_dir=result.case_dirs["n"],
-        mesh_path=result.mesh_path,
-    )
-```
-
-Generated case files remain available inside the context and are cleaned after
-a successful exit. CFD failures and exceptions raised by the consumer preserve
-scratch files for diagnosis. The paths exposed by `result` must not be used
-after leaving the context.
+Preparation and configuration use one process; the two solver stages use the configured MPI ranks and threads. Failed evaluations retain their scratch files for diagnosis.
 
 ## Slurm execution
 
@@ -73,10 +56,7 @@ Select the backend in either candidate or optimization configuration:
 backend = "slurm"
 ```
 
-Run `hydroflow-opt` inside an existing `sbatch` or `salloc` allocation. The
-allocation may span nodes, but each candidate must fit on one node.
-The TiStoS worker is a controller: geometry generation and meshing run once,
-while each OpenFOAM solver stage is launched directly as:
+Run `hydroflow-opt` inside an existing `sbatch` or `salloc` allocation. The allocation may span nodes, but each candidate must fit on one node. Every stage, including geometry generation and meshing, is launched as an explicit exclusive one-node `srun` step. Serial stages request one task; each OpenFOAM stage is launched as:
 
 ```text
 srun --exclusive --nodes=1 --ntasks=<mpi_ranks> \
@@ -84,9 +64,7 @@ srun --exclusive --nodes=1 --ntasks=<mpi_ranks> \
   simpleFoam -parallel -fileHandler collated
 ```
 
-There is no nested `mpiexec` in Slurm mode. Local execution continues to use
-`mpiexec -n <mpi_ranks>`. For four islands with two one-thread MPI ranks per
-candidate, configure:
+There is no nested `mpiexec` in Slurm mode. In local mode, hydroflow-opt runs serial stages directly and prefixes multi-process solver stages with `mpiexec -n <mpi_ranks>`. Multiple candidate evaluations can therefore perform meshing concurrently as well as solving concurrently. For four islands with two one-thread MPI ranks per candidate, configure:
 
 ```toml
 [resources]
@@ -127,7 +105,4 @@ hydroflow-opt check examples/tistos_candidate_slurm.toml
 hydroflow-opt run examples/tistos_candidate_slurm.toml
 ```
 
-Do not wrap `hydroflow-opt` itself in `srun`; the backend creates the solver
-steps from inside the allocation. Controller processes originate on the batch
-node; only their scheduler-managed solver stages are placed across multiple
-nodes.
+Do not wrap `hydroflow-opt` itself in `srun`; the backend creates the stage steps from inside the allocation. The run and scratch directories must be on a filesystem visible from every allocated node because consecutive stages of a candidate are not required to run on the same node.

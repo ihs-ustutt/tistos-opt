@@ -1,6 +1,7 @@
 import subprocess
 import xml.etree.ElementTree as ET
 import os
+import shutil
 import sys
 import time
 from tistos_files.tistosPyBib import *
@@ -28,7 +29,7 @@ logger = import_logger()
 
 
 class tistos:
-    def __init__(self, x, state, solver_launcher=None):
+    def __init__(self, x, state):
         self.state = state
         self.history_ = {}
         self.history_["DateOfBirth"] = time.ctime()
@@ -36,9 +37,6 @@ class tistos:
         # self.mainDir = os.getcwd()
         self.stateNumber = int(self.state.split("_")[-1])
         self.caseName = "tistos_ru_of"
-        self.procPerJob = int(os.environ.get("FLOW_OPT_MPI_RANKS", "1"))
-        self.solverLauncher = list(solver_launcher or [])
-        self.cfdOk_ = False
         # self.wd = os.environ["TMPDIR"]
         self.wd = "./"
         self.mainDir = self.wd
@@ -148,67 +146,9 @@ class tistos:
             logger.info("self.MeshOk_ = False")
             self.MeshOk_ = False
 
-    def run(self):
-        logger.info("Start run routine...")
-        start_time = time.time()
-        state = self.state
-        mainDir = self.mainDir
-        caseName = self.caseName
-        procPerJob = self.procPerJob
-        foamCaseDir = os.path.join(mainDir, (caseName + "_n_" + state))
-        use_foamlib = True
-        # logger.debug(f"SLURM JOB STEP: {os.environ['SLURM_STEPID']}.")
-        try:
-            if type(procPerJob) == str:
-                int_procPerJob = int(procPerJob)
-                str_procPerJob = procPerJob
-            elif type(procPerJob) == int:
-                int_procPerJob = procPerJob
-                str_procPerJob = str(procPerJob)
-                # shutil.rmtree(di)
-
-            ### openfoam ###
-            args = [
-                "sh",
-                "-e",
-                os.path.join(mainDir, "tistos_files/sbatch.tistos_ru_of.sh"),
-                foamCaseDir,
-                str(procPerJob),
-                *self.solverLauncher,
-            ]
-            logger.info(f"Start CFD for {state}.")
-            result = subprocess.run(
-                args, text=True, capture_output=True, timeout=15 * 60, check=True
-            )
-            logger.info(f"Finished CFD for {state}.")
-
-            end_time = time.time()
-            # logger.info(f"Results for {state}:" )
-            logger.info(f"Results for {state}:{result.returncode}.")
-            if result.returncode == 0:
-                # logger.debug(f"Time {state}: {round(end_time - start_time,2)}.")
-                # logger.debug(f"STD_ERR: {result.stderr}.")
-                # logger.debug(f"STD_OUT: {result.stdout}.")
-                self.cfdOk_ = True
-            else:
-                logger.warning(f"Return Code for {state}: {result.returncode}.")
-                logger.warning(f"STD_ERR: {result.stderr}.")
-                logger.warning(f"STD_OUT: {result.stdout}.")
-
-        except Exception as e:
-            logger.warning("Catch exception in sbatch OpenFoam Sim: %s", e)
-            logger.exception("this is the exception")
-            logger.exception(f"Type: {type(e)}.")
-            if isinstance(e, subprocess.CalledProcessError):
-                logger.warning("Output des CalledProcessError:")
-                logger.warning(e.stderr)
-                logger.warning(e.stdout)
-            self.history_["DateOfFailure"] = time.ctime()
-            self.history_["ReasonOfFailure"] = str(e)
-
     def evaluate(self):
         try:
-            logger.info(f"Pyro: POST PROCESSING {self.state}")
+            logger.info(f"POST PROCESSING {self.state}")
             aProb = tistosRunner(
                 case=self.caseName,
                 prefix=self.state.split("_")[0],
@@ -224,17 +164,14 @@ class tistos:
             fit, fit_extra = aProb.GiveFitness()
             logger.info(f"FITNESS of {self.state}: {fit}")
         except:
-            if self.cfdOk_:
-                logger.exception("Evaluation Exception")
-            else:
-                pass
+            logger.exception("Evaluation Exception")
+            raise
         return fit, fit_extra
 
     def delete(self):
         cleanupTistos(
             self.state,
             case=self.caseName,
-            log_errors=self.cfdOk_,
         )
 
     def get_history(self):
@@ -256,79 +193,3 @@ def cleanupTistos(state, case="tistos_ru_of", log_errors=True):
     except Exception as e:
         if log_errors:
             logger.info("Catch exception in delete: %s", e)
-
-
-def runTistos(x, state, solver_launcher=None, *, cleanup=True):
-    ti = tistos(x, state, solver_launcher=solver_launcher)
-    state = ti.state
-    ti.pre()
-    ti.mesh()
-    if not ti.MeshOk_:
-        raise RuntimeError(f"Mesh generation failed for {state}")
-    logger.info(f"Proxy: Finished Meshing state {state}. Next Step: running cfd")
-    ti.run()
-    if not ti.cfdOk_:
-        reason = ti.history_.get("ReasonOfFailure", "unknown CFD failure")
-        raise RuntimeError(f"OpenFOAM failed for {state}: {reason}")
-    logger.info(f"Proxy: Finished Running CFD State {state}.")
-    fit, fit_extra = ti.evaluate()
-    logger.info(f"Proxy: Finished evaluate: {fit}")
-    if cleanup:
-        ti.delete()
-    history = ti.get_history()
-    for key in fit_extra:
-        if type(fit_extra[key]) == np.float64:
-            # logger.info(f"type of {key}: {type(fit_extra[key])}.")
-            fit_extra[key] = float(fit_extra[key])
-        # logger.info(f"type of {key}: {type(fit_extra[key])}.")
-        elif type(fit_extra[key]) == np.ndarray:
-            # logger.info(f"type of {key}: {type(fit_extra[key])}.")
-            fit_extra[key] = list(fit_extra[key])
-        # logger.info(f"type of {key}: {type(fit_extra[key])}.")
-    if type(fit) == np.ndarray:
-        fit = list(fit)  # serializable
-    elif type(fit) == np.float64:
-        fit = float(fit)
-    # logger.info(f"type of fit: {type(fit)}.")
-    # fit_extra = {}
-    return fit, fit_extra, state, history
-
-
-if __name__ == "__main__":
-    ## Geometrieparameter
-    x = np.array(
-        [
-            -0.11438032,
-            -0.16330727,
-            -0.12347644,
-            0.04519614,
-            -0.03833768,
-            0.01815242,
-            1.38688502,
-            1.48812174,
-            1.43800951,
-            0.51168807,
-            0.50356657,
-            0.50007975,
-            -0.05588548,
-            -0.09595725,
-            -0.00877194,
-            0.72367283,
-            0.99274612,
-            1.12017201,
-            0.00703073,
-            0.00662532,
-            0.00570674,
-            0.00818822,
-            0.00783633,
-            0.00976244,
-            0.00885879,
-            0.00653766,
-            0.00964224,
-            0.48951801,
-            0.54581857,
-            0.54440488,
-        ]
-    )
-    state = "TEST_1"
-    runTistos(x, state)
