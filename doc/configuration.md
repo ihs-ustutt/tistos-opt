@@ -7,6 +7,21 @@ TiStoS uses hydroflow-opt's general configuration format. Select the installed p
 name = "tistos"
 ```
 
+## Solver iterations
+
+Set the iteration count for each OpenFOAM stage in the run configuration:
+
+```toml
+[case.options]
+laminar_iterations = 100
+turbulent_iterations = 400
+```
+
+Both options must be positive integers. Defaults: the laminar stage stops at iteration 100, then the turbulent stage runs another 400 iterations, ending at 500. For example, values of 200 and 800 stop the stages at 200 and 1000. These counts are independent of optimizer `generations`.
+
+The plugin updates `endTime` and `writeInterval` for each stage and passes the same limits to post-processing, including its result-directory selection and final-iteration check. The settings are saved in `tistos-state.json` and result metadata. The objective averages the final 10% of the cumulative iteration
+count, limited to the turbulent-stage length and at least one sample.
+
 ## Candidate run
 
 The complete supplied design is in `examples/tistos_candidate.toml`:

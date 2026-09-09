@@ -35,6 +35,8 @@ Start a pygmo differential-evolution run with:
 hydroflow-opt optimize examples/tistos_optimization.toml
 ```
 
+Set `laminar_iterations` and `turbulent_iterations` under `[case.options]` to adjust the solver stage counts; see [configuration](doc/configuration.md#solver-iterations).
+
 Each evaluation receives its own scratch directory. The bundled legacy code, geometry XML, and OpenFOAM inlet boundary data are copied there before dtOO is loaded, so concurrent candidates do not share mutable case files.
 
 ## Evaluation stages
@@ -42,9 +44,9 @@ Each evaluation receives its own scratch directory. The bundled legacy code, geo
 Each candidate is evaluated as five explicit stages:
 
 1. `prepare` copies the case, generates geometry and mesh, runs `checkMesh`, decomposes parallel cases, and configures the laminar solve.
-2. `solve-laminar` runs `simpleFoam` to iteration 100.
+2. `solve-laminar` runs `simpleFoam` to iteration 100 by default.
 3. `configure-turbulent` enables turbulence and changes the end time to 500.
-4. `solve-turbulent` continues the OpenFOAM calculation.
+4. `solve-turbulent` continues for another 400 iterations by default (ending at 500).
 5. `finalize` reconstructs parallel results, computes the objective, writes the structured result, and cleans generated files after success.
 
 Preparation and configuration use one process; the two solver stages use the configured MPI ranks and threads. Failed evaluations retain their scratch files for diagnosis.

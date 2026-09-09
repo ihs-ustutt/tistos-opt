@@ -15,6 +15,8 @@ from hydroflow_opt.models import (
     StageResources,
 )
 
+from tistos_opt.options import SolverOptions
+
 
 @dataclass(frozen=True)
 class ParameterDefinition:
@@ -83,7 +85,7 @@ class TistosCase:
 
     def parameter_space(self, options: dict[str, Any]) -> ParameterSpace:
         """Return the physical optimization bounds for TiStoS."""
-        del options
+        SolverOptions.from_options(options)
         return ParameterSpace(
             names=tuple(parameter.name for parameter in PARAMETERS),
             lower_bounds=tuple(

@@ -34,7 +34,10 @@ class tistosRunner:
     OMEGA = 7.53982
     DHZUL = -2.4
 
-    def __init__(self, case, prefix, stateNumber, coeff):
+    def __init__(
+        self, case, prefix, stateNumber, coeff, *,
+        laminar_end_time=100, end_time=500,
+    ):
         self.case_ = case
         self.prefix_ = prefix
         self.stateNumber_ = stateNumber
@@ -42,7 +45,8 @@ class tistosRunner:
         self.state_ = str(self.prefix_) + "_" + str(self.stateNumber_)
 
         self.weights_ = {"tl": 1 / 3, "n": 1, "vl": 1 / 3}
-        self.end_time = 500
+        self.laminar_end_time = laminar_end_time
+        self.end_time = end_time
 
         #
         # Init variables
@@ -112,22 +116,34 @@ class tistosRunner:
                 #
                 Q_ru_dev = dtScalarDeveloping(
                     dtDeveloping(
-                        os.path.join(caseDirOf, "postProcessing/Q_ru_in/100")
+                        os.path.join(
+                            caseDirOf,
+                            f"postProcessing/Q_ru_in/{self.laminar_end_time}",
+                        )
                     ).Read()
                 )
                 pIn_ru_dev = dtScalarDeveloping(
                     dtDeveloping(
-                        os.path.join(caseDirOf, "postProcessing/ptot_ru_in/100")
+                        os.path.join(
+                            caseDirOf,
+                            f"postProcessing/ptot_ru_in/{self.laminar_end_time}",
+                        )
                     ).Read()
                 )
                 pOut_ru_dev = dtScalarDeveloping(
                     dtDeveloping(
-                        os.path.join(caseDirOf, "postProcessing/ptot_ru_out/100")
+                        os.path.join(
+                            caseDirOf,
+                            f"postProcessing/ptot_ru_out/{self.laminar_end_time}",
+                        )
                     ).Read()
                 )
                 Vcav = dtScalarDeveloping(
                     dtDeveloping(
-                        os.path.join(caseDirOf, "postProcessing/V_CAV/100")
+                        os.path.join(
+                            caseDirOf,
+                            f"postProcessing/V_CAV/{self.laminar_end_time}",
+                        )
                     ).Read()
                 )
                 F_dev = dtForceDeveloping(
@@ -136,7 +152,13 @@ class tistosRunner:
                     )
                 )
 
-                average_time = int(time_step_holder / 10)
+                average_time = max(
+                    1,
+                    min(
+                        time_step_holder // 10,
+                        self.end_time - self.laminar_end_time,
+                    ),
+                )
                 self.P_[i] = F_dev.MomentMeanLast(average_time)[2] * omega
                 self.dH_[i] = (
                     pOut_ru_dev.MeanLast(average_time)
@@ -170,10 +192,10 @@ class tistosRunner:
         caseDirOf = self.case_ + "_n_" + self.state_
         omega = tistosRunner.OMEGA
         timestep_orig = timestep  # offset because different files...
-        if timestep > 100:
-            post_proc_folder = 100
+        if timestep > self.laminar_end_time:
+            post_proc_folder = self.laminar_end_time
             timestep_force = timestep
-            timestep = timestep - 100  ##laminare zeit abziehen
+            timestep = timestep - self.laminar_end_time
         else:
             post_proc_folder = 0
             timestep_force = timestep
@@ -214,7 +236,7 @@ class tistosRunner:
         ).dtype.names
         res = np.genfromtxt(path_solverInfo)
 
-        average_time = 10
+        average_time = min(10, timestep)
         res_dict = {}
         P = F_dev.MomentMean(timestep_force, average_time)[2] * omega
         dH = (
@@ -327,7 +349,7 @@ class tistosRunner:
         omega_final = []
         time_list = []
         end_time = self.end_time
-        for timestep in np.arange(20, end_time + 20, 20):
+        for timestep in range(20, end_time + 1, 20):
             try:
                 P_temp, dH_temp, eta_temp, Vcav_temp, res = self.post_proc(timestep)
                 P.append(P_temp)

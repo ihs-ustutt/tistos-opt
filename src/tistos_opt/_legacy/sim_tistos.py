@@ -146,7 +146,7 @@ class tistos:
             logger.info("self.MeshOk_ = False")
             self.MeshOk_ = False
 
-    def evaluate(self):
+    def evaluate(self, *, laminar_end_time=100, end_time=500):
         try:
             logger.info(f"POST PROCESSING {self.state}")
             aProb = tistosRunner(
@@ -154,6 +154,8 @@ class tistos:
                 prefix=self.state.split("_")[0],
                 stateNumber=self.stateNumber,
                 coeff=self.x,
+                laminar_end_time=laminar_end_time,
+                end_time=end_time,
             )
             aProb.ReadResults(self.history_)
             if aProb.isOk_:

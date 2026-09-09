@@ -1,5 +1,8 @@
 import json
+import runpy
+import sys
 import xml.etree.ElementTree as ET
+from types import SimpleNamespace
 
 import pytest
 from hydroflow_opt.models import Candidate, EvaluationPaths, ResourceRequest
@@ -93,8 +96,15 @@ def test_serial_plan_runs_simple_foam_directly(tmp_path):
     assert stages[3].command == ("simpleFoam",)
 
 
+@pytest.mark.parametrize(
+    "options, laminar_end, end_time",
+    [
+        ({}, 100, 500),
+        ({"laminar_iterations": 37, "turbulent_iterations": 86}, 37, 123),
+    ],
+)
 def test_prepare_maps_parameters_and_configures_laminar_case(
-    monkeypatch, tmp_path
+    monkeypatch, tmp_path, options, laminar_end, end_time
 ):
     request_path = tmp_path / "request.json"
     state_path = tmp_path / "state.json"
@@ -137,7 +147,7 @@ def test_prepare_maps_parameters_and_configures_laminar_case(
         lambda case, command, log: commands.append((case, command, log)),
     )
     values = _parameter_values()
-    _write_request(request_path, candidate_id, values, scratch_dir, 4)
+    _write_request(request_path, candidate_id, values, scratch_dir, 4, options)
 
     runtime.prepare(request_path, state_path)
 
@@ -158,10 +168,17 @@ def test_prepare_maps_parameters_and_configures_laminar_case(
     ]
     assert "numberOfSubdomains 4;" in _read_decompose(case_dir)
     assert "method scotch;" in _read_decompose(case_dir)
-    assert "endTime 100;" in _read_control(case_dir)
-    assert "writeInterval 100;" in _read_control(case_dir)
+    assert f"endTime {laminar_end};" in _read_control(case_dir)
+    assert f"writeInterval {laminar_end};" in _read_control(case_dir)
     assert "turbulence off;" in _read_turbulence(case_dir)
     assert "faceL" in _read_schemes(case_dir)
+
+    runtime.configure_turbulent(state_path)
+
+    assert f"endTime {end_time};" in _read_control(case_dir)
+    assert f"writeInterval {end_time};" in _read_control(case_dir)
+    assert "turbulence on;" in _read_turbulence(case_dir)
+    assert "cellL" in _read_schemes(case_dir)
 
 
 def test_configure_turbulent_updates_openfoam_files(tmp_path):
@@ -177,7 +194,16 @@ def test_configure_turbulent_updates_openfoam_files(tmp_path):
     assert "cellL" in _read_schemes(case_dir)
 
 
-def test_finalize_writes_result_before_cleanup(monkeypatch, tmp_path):
+@pytest.mark.parametrize(
+    "options, laminar_end, end_time",
+    [
+        ({}, 100, 500),
+        ({"laminar_iterations": 37, "turbulent_iterations": 86}, 37, 123),
+    ],
+)
+def test_finalize_writes_result_before_cleanup(
+    monkeypatch, tmp_path, options, laminar_end, end_time
+):
     request_path = tmp_path / "request.json"
     state_path = tmp_path / "state.json"
     result_path = tmp_path / "result.json"
@@ -196,6 +222,7 @@ def test_finalize_writes_result_before_cleanup(monkeypatch, tmp_path):
                 "work_dir": str(work_dir),
                 "case_dir": str(case_dir),
                 "history": {"status": "meshed"},
+                "solver_options": options,
             }
         ),
         encoding="utf-8",
@@ -208,7 +235,8 @@ def test_finalize_writes_result_before_cleanup(monkeypatch, tmp_path):
             observed["state"] = state
             self.history_ = {}
 
-        def evaluate(self):
+        def evaluate(self, **kwargs):
+            observed["solver_settings"] = kwargs
             self.history_["status"] = "evaluated"
             return 0.75, {"eta": 0.9}
 
@@ -237,6 +265,14 @@ def test_finalize_writes_result_before_cleanup(monkeypatch, tmp_path):
     assert result["metadata"]["history"]["status"] == "evaluated"
     assert observed["result_existed_at_cleanup"] is True
     assert observed["cleaned"] == "TISTOS_1"
+    assert observed["solver_settings"] == {
+        "laminar_end_time": laminar_end,
+        "end_time": end_time,
+    }
+    assert result["metadata"]["solver_options"] == {
+        "laminar_iterations": laminar_end,
+        "turbulent_iterations": end_time - laminar_end,
+    }
     assert not (case_dir / "processor0").exists()
 
 
@@ -270,7 +306,7 @@ def test_finalize_failure_preserves_case_and_writes_no_result(
             del vector, state
             self.history_ = {}
 
-        def evaluate(self):
+        def evaluate(self, **kwargs):
             raise RuntimeError("post-processing failed")
 
     class FakeImplementation:
@@ -345,7 +381,9 @@ def _parameter_values():
     }
 
 
-def _write_request(path, candidate_id, parameters, scratch_dir, mpi_ranks):
+def _write_request(
+    path, candidate_id, parameters, scratch_dir, mpi_ranks, options=None
+):
     path.write_text(
         json.dumps(
             {
@@ -353,6 +391,7 @@ def _write_request(path, candidate_id, parameters, scratch_dir, mpi_ranks):
                     "id": candidate_id,
                     "parameters": parameters,
                 },
+                "case": {"name": "tistos", "options": options or {}},
                 "context": {
                     "scratch_dir": str(scratch_dir),
                     "resources": {"mpi_ranks": mpi_ranks},
@@ -398,3 +437,123 @@ def _read_turbulence(case_dir):
 
 def _read_schemes(case_dir):
     return (case_dir / "system" / "fvSchemes").read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize(
+    "name", ["laminar_iterations", "turbulent_iterations"]
+)
+@pytest.mark.parametrize("value", [0, -1, True, 1.5, "100", None])
+def test_invalid_iteration_counts_fail_during_case_validation(name, value):
+    with pytest.raises(ValueError, match=f"{name} must be a positive integer"):
+        TistosCase().parameter_space({name: value})
+
+
+@pytest.mark.parametrize(
+    "laminar_end, end_time, average, last_time",
+    [
+        (100, 500, 50, 500),
+        (37, 123, 12, 123),
+        (1, 2, 1, 2),
+        (100, 101, 1, 101),
+        (37, 123, 12, 122),
+    ],
+)
+def test_legacy_results_use_configured_limits(
+    monkeypatch, tmp_path, laminar_end, end_time, average, last_time
+):
+    paths = []
+    windows = []
+
+    class Developing:
+        def __init__(self, path):
+            self.path = path
+            paths.append(path)
+
+        def Read(self, *args):
+            return self.path
+
+    class Scalar:
+        def __init__(self, path):
+            self.path = path
+
+        def MeanLast(self, count):
+            windows.append(count)
+            return 2.0 if "ptot_ru_out" in self.path else 1.0
+
+        def LastTime(self):
+            return last_time
+
+    class Force:
+        def __init__(self, path):
+            pass
+
+        def MomentMeanLast(self, count):
+            windows.append(count)
+            return [0.0, 0.0, 1.0]
+
+    monkeypatch.setitem(
+        sys.modules,
+        "pyDtOO",
+        SimpleNamespace(
+            dtDeveloping=Developing,
+            dtScalarDeveloping=Scalar,
+            dtForceDeveloping=Force,
+        ),
+    )
+    monkeypatch.chdir(tmp_path)
+    module = runpy.run_path(
+        str(
+            runtime._package_root()
+            / "_legacy"
+            / "tistos_files"
+            / "tistosPyBib.py"
+        )
+    )
+    runner = module["tistosRunner"](
+        "case",
+        "TISTOS",
+        1,
+        [],
+        laminar_end_time=laminar_end,
+        end_time=end_time,
+    )
+
+    history = runner.ReadResults({})
+
+    assert runner.isOk_ == (last_time == end_time)
+    if last_time != end_time:
+        assert (
+            history["ReasonOfFailure"]
+            == "Max number of iterations not reached."
+        )
+    assert paths == [
+        f"case_n_TISTOS_1/postProcessing/{name}/{laminar_end}"
+        for name in ("Q_ru_in", "ptot_ru_in", "ptot_ru_out", "V_CAV")
+    ] + ["case_n_TISTOS_1/postProcessing/forces"]
+    assert windows and all(count == average for count in windows)
+
+    sampled = []
+
+    def post_proc(timestep):
+        sampled.append(timestep)
+        return (
+            1,
+            1,
+            1,
+            1,
+            dict.fromkeys(
+                (
+                    "Ux_final",
+                    "Uy_final",
+                    "Uz_final",
+                    "p_final",
+                    "k_final",
+                    "omega_final",
+                ),
+                0,
+            ),
+        )
+
+    runner.post_proc = post_proc
+    runner.extract_residuals({})
+    assert sampled == list(range(20, end_time + 1, 20))

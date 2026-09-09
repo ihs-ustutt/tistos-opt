@@ -14,6 +14,7 @@ import subprocess
 import sys
 from collections.abc import Iterator
 from contextlib import contextmanager
+from dataclasses import asdict
 from importlib.resources import files
 from pathlib import Path
 from typing import Any
@@ -22,11 +23,15 @@ from hydroflow_opt.models import EvaluationResult
 from hydroflow_opt.results import write_result
 
 from tistos_opt.case import PARAMETERS, _state_label
+from tistos_opt.options import SolverOptions
 
 
 def prepare(request_path: Path, state_path: Path) -> None:
     """Generate and decompose one case, ready for the laminar solve."""
     request = _read_json(request_path)
+    options = SolverOptions.from_options(
+        request.get("case", {}).get("options", {})
+    )
     candidate = request["candidate"]
     candidate_id = str(candidate["id"])
     state = _state_label(candidate_id)
@@ -60,7 +65,7 @@ def prepare(request_path: Path, state_path: Path) -> None:
             ["decomposePar", "-fileHandler", "collated"],
             "log.decomposePar",
         )
-    _configure_laminar(case_dir)
+    _configure_laminar(case_dir, options.laminar_iterations)
 
     _write_json(
         state_path,
@@ -69,6 +74,7 @@ def prepare(request_path: Path, state_path: Path) -> None:
             "state": state,
             "vector": vector,
             "mpi_ranks": mpi_ranks,
+            "solver_options": asdict(options),
             "work_dir": str(work_dir),
             "case_dir": str(case_dir),
             "mesh_path": str(work_dir / f"{state}_ru_gridGmsh.msh"),
@@ -80,7 +86,8 @@ def prepare(request_path: Path, state_path: Path) -> None:
 def configure_turbulent(state_path: Path) -> None:
     """Switch a prepared case from laminar to turbulent settings."""
     state = _read_state(state_path)
-    _configure_turbulent(Path(state["case_dir"]))
+    options = SolverOptions.from_options(state.get("solver_options", {}))
+    _configure_turbulent(Path(state["case_dir"]), options.end_time)
 
 
 def finalize(
@@ -91,6 +98,7 @@ def finalize(
     """Reconstruct, evaluate, persist, and then clean a completed case."""
     request = _read_json(request_path)
     state_data = _read_state(state_path)
+    options = SolverOptions.from_options(state_data.get("solver_options", {}))
     candidate_id = str(request["candidate"]["id"])
     if state_data["candidate_id"] != candidate_id:
         raise ValueError("TiStoS state does not match the candidate request")
@@ -110,7 +118,10 @@ def finalize(
         implementation = _load_implementation(work_dir)
         evaluation = implementation.tistos(vector, state)
         evaluation.history_.update(state_data.get("history", {}))
-        fitness, extra = evaluation.evaluate()
+        fitness, extra = evaluation.evaluate(
+            laminar_end_time=options.laminar_iterations,
+            end_time=options.end_time,
+        )
         history = evaluation.get_history()
 
     result = EvaluationResult.success(
@@ -118,6 +129,7 @@ def finalize(
         float(fitness),
         metadata={
             "state": state,
+            "solver_options": asdict(options),
             "fitness_components": _json_compatible(extra),
             "history": _json_compatible(history),
         },
@@ -134,10 +146,12 @@ def _configure_decomposition(case_dir: Path, mpi_ranks: int) -> None:
     _replace_assignment(path, "method", "scotch")
 
 
-def _configure_laminar(case_dir: Path) -> None:
-    _replace_assignment(case_dir / "system" / "controlDict", "endTime", "100")
+def _configure_laminar(case_dir: Path, end_time: int = 100) -> None:
     _replace_assignment(
-        case_dir / "system" / "controlDict", "writeInterval", "100"
+        case_dir / "system" / "controlDict", "endTime", str(end_time)
+    )
+    _replace_assignment(
+        case_dir / "system" / "controlDict", "writeInterval", str(end_time)
     )
     _replace_assignment(
         case_dir / "constant" / "turbulenceProperties",
@@ -147,10 +161,12 @@ def _configure_laminar(case_dir: Path) -> None:
     _replace_text(case_dir / "system" / "fvSchemes", "cellL", "faceL")
 
 
-def _configure_turbulent(case_dir: Path) -> None:
-    _replace_assignment(case_dir / "system" / "controlDict", "endTime", "500")
+def _configure_turbulent(case_dir: Path, end_time: int = 500) -> None:
     _replace_assignment(
-        case_dir / "system" / "controlDict", "writeInterval", "500"
+        case_dir / "system" / "controlDict", "endTime", str(end_time)
+    )
+    _replace_assignment(
+        case_dir / "system" / "controlDict", "writeInterval", str(end_time)
     )
     _replace_assignment(
         case_dir / "constant" / "turbulenceProperties",
