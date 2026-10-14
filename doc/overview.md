@@ -16,7 +16,7 @@ TiStoS is a case plugin, not an optimizer or execution backend. Its responsibili
 named candidate parameters
           │
           ▼
-TiStoS parameter vector ──> dtOO geometry and mesh
+Named TiStoS parameters ──> dtOO geometry and mesh
                                   │
                                   ▼
                          laminar simpleFoam
@@ -32,4 +32,4 @@ The package registers `TistosCase` under the entry-point name `tistos`. Importin
 
 ## Candidate isolation
 
-Every candidate receives its own scratch tree. The plugin copies the bundled legacy implementation, XML input, and boundary data into that tree before loading dtOO. Candidates therefore do not share mutable case files and can be evaluated concurrently.
+Every candidate receives its own scratch tree. The plugin copies XML templates, XML input, and boundary data into that tree. Python code runs from the installed package. Candidates therefore do not share mutable case files and can be evaluated concurrently.

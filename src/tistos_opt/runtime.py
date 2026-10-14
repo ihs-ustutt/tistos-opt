@@ -1,19 +1,20 @@
 """Implementation of the explicit TiStoS evaluation stages.
 
-The external dtOO runtime is imported only after a candidate-local copy of the
-supplied case has been created. This keeps plugin discovery lightweight and
-prevents concurrent candidates from sharing mutable files.
+Geometry runs in child processes; postprocessing is imported only in finalize.
+Python code comes from the installed package, while each candidate gets its
+own mutable case data.
+
+Read the public functions first: prepare -> configure_turbulent -> finalize.
+The backend runs simpleFoam between these Python stages (see case.py). The
+private helpers configure OpenFOAM and manage case/state files; they are not
+part of the hydroflow-opt plugin contract.
 """
 
-import importlib.util
 import json
 import os
 import re
 import shutil
 import subprocess
-import sys
-from collections.abc import Iterator
-from contextlib import contextmanager
 from dataclasses import asdict
 from importlib.resources import files
 from pathlib import Path
@@ -22,7 +23,8 @@ from typing import Any
 from hydroflow_opt.models import EvaluationResult
 from hydroflow_opt.results import write_result
 
-from tistos_opt.case import PARAMETERS, _state_label
+from tistos_opt._legacy.sim_tistos import cleanup_case, prepare_case
+from tistos_opt.case import _state_label
 from tistos_opt.options import SolverOptions
 
 
@@ -36,7 +38,6 @@ def prepare(request_path: Path, state_path: Path) -> None:
     candidate_id = str(candidate["id"])
     state = _state_label(candidate_id)
     parameters = candidate["parameters"]
-    vector = [float(parameters[item.name]) for item in PARAMETERS]
     resources = request["context"]["resources"]
     mpi_ranks = int(resources["mpi_ranks"])
     if mpi_ranks < 1:
@@ -47,14 +48,7 @@ def prepare(request_path: Path, state_path: Path) -> None:
     os.environ["TMPDIR"] = str(scratch_dir)
     work_dir = _stage_case(scratch_dir)
 
-    with _working_directory(work_dir):
-        implementation = _load_implementation(work_dir)
-        evaluation = implementation.tistos(vector, state)
-        evaluation.pre()
-        evaluation.mesh()
-        if not evaluation.MeshOk_:
-            raise RuntimeError(f"mesh generation failed for {state}")
-        history = evaluation.get_history()
+    history = prepare_case(work_dir, state, parameters)
 
     case_dir = work_dir / f"tistos_ru_of_n_{state}"
     _run_case_command(case_dir, ["checkMesh"], "log.checkMesh")
@@ -67,18 +61,18 @@ def prepare(request_path: Path, state_path: Path) -> None:
         )
     _configure_laminar(case_dir, options.laminar_iterations)
 
+    # Later stages start fresh processes: persist paths and history, not dtOO
+    # objects. This state file is plugin-owned; request.json is core-owned.
     _write_json(
         state_path,
         {
             "candidate_id": candidate_id,
             "state": state,
-            "vector": vector,
             "mpi_ranks": mpi_ranks,
             "solver_options": asdict(options),
             "work_dir": str(work_dir),
             "case_dir": str(case_dir),
-            "mesh_path": str(work_dir / f"{state}_ru_gridGmsh.msh"),
-            "history": _json_compatible(history),
+            "history": history,
         },
     )
 
@@ -107,22 +101,19 @@ def finalize(
     case_dir = Path(state_data["case_dir"])
     mpi_ranks = int(state_data["mpi_ranks"])
     state = str(state_data["state"])
-    vector = [float(value) for value in state_data["vector"]]
+    # Postprocessing expects a single reconstructed case, even after MPI runs.
     if mpi_ranks > 1:
         _run_case_command(case_dir, ["reconstructPar"], "log.reconstructPar")
         for processor_dir in case_dir.glob("processor*"):
             if processor_dir.is_dir():
                 shutil.rmtree(processor_dir)
 
-    with _working_directory(work_dir):
-        implementation = _load_implementation(work_dir)
-        evaluation = implementation.tistos(vector, state)
-        evaluation.history_.update(state_data.get("history", {}))
-        fitness, extra = evaluation.evaluate(
-            laminar_end_time=options.laminar_iterations,
-            end_time=options.end_time,
-        )
-        history = evaluation.get_history()
+    # Only this stage needs pyDtOO; import it at the point of use.
+    from tistos_opt._legacy.tistos_files.tistosPyBib import evaluate_case
+
+    fitness, extra, history = evaluate_case(
+        case_dir, options, state_data.get("history", {})
+    )
 
     result = EvaluationResult.success(
         candidate_id,
@@ -130,23 +121,25 @@ def finalize(
         metadata={
             "state": state,
             "solver_options": asdict(options),
-            "fitness_components": _json_compatible(extra),
-            "history": _json_compatible(history),
+            "fitness_components": extra,
+            "history": history,
         },
     )
     write_result(result_path, result)
 
-    with _working_directory(work_dir):
-        implementation.cleanupTistos(state)
+    # Persist the objective and diagnostics before deleting generated files.
+    cleanup_case(work_dir, state)
 
 
 def _configure_decomposition(case_dir: Path, mpi_ranks: int) -> None:
+    """Match OpenFOAM's partition count to the plan's solver resources."""
     path = case_dir / "system" / "decomposeParDict"
     _replace_assignment(path, "numberOfSubdomains", str(mpi_ranks))
     _replace_assignment(path, "method", "scotch")
 
 
 def _configure_laminar(case_dir: Path, end_time: int = 100) -> None:
+    """Set the initial solve's stop/write time and laminar discretization."""
     _replace_assignment(
         case_dir / "system" / "controlDict", "endTime", str(end_time)
     )
@@ -162,6 +155,7 @@ def _configure_laminar(case_dir: Path, end_time: int = 100) -> None:
 
 
 def _configure_turbulent(case_dir: Path, end_time: int = 500) -> None:
+    """Set the second solve's stop/write time and turbulent discretization."""
     _replace_assignment(
         case_dir / "system" / "controlDict", "endTime", str(end_time)
     )
@@ -195,6 +189,7 @@ def _replace_text(path: Path, old: str, new: str) -> None:
 def _run_case_command(
     case_dir: Path, command: list[str], log_name: str
 ) -> None:
+    """Run a serial utility; the backend launches the solver stages."""
     with (case_dir / log_name).open("w", encoding="utf-8") as log:
         subprocess.run(
             command,
@@ -207,7 +202,7 @@ def _run_case_command(
 
 
 def _stage_case(scratch_dir: Path) -> Path:
-    """Copy immutable package resources into a candidate-local work tree."""
+    """Copy case data into a candidate-local work tree."""
     work_dir = scratch_dir / "tistos"
     if work_dir.exists():
         shutil.rmtree(work_dir)
@@ -216,8 +211,10 @@ def _stage_case(scratch_dir: Path) -> Path:
     package_root = _package_root()
     legacy_root = package_root / "_legacy"
     data_root = package_root / "_case_data"
-    shutil.copy2(legacy_root / "sim_tistos.py", work_dir / "sim_tistos.py")
-    _copy_tree(legacy_root / "tistos_files", work_dir / "tistos_files")
+    template_dir = work_dir / "tistos_files"
+    template_dir.mkdir()
+    for name in ("machine.xml", "templateState.xml"):
+        shutil.copy2(legacy_root / "tistos_files" / name, template_dir / name)
     _copy_tree(data_root / "xml", work_dir / "xml")
     _copy_tree(
         data_root / "boundaryData_RU_INLET",
@@ -236,24 +233,6 @@ def _copy_tree(source: Path, destination: Path) -> None:
     )
 
 
-def _load_implementation(work_dir: Path) -> Any:
-    source = work_dir / "sim_tistos.py"
-    sys.path.insert(0, str(work_dir))
-    try:
-        spec = importlib.util.spec_from_file_location(
-            "tistos_implementation", source
-        )
-        if spec is None or spec.loader is None:
-            raise RuntimeError(
-                f"cannot load TiStoS implementation from {source}"
-            )
-        module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(module)
-        return module
-    finally:
-        sys.path.remove(str(work_dir))
-
-
 def _package_root() -> Path:
     root = files("tistos_opt")
     if not isinstance(root, Path):
@@ -267,11 +246,11 @@ def _implementation_path() -> Path:
 
 
 def _read_state(path: Path) -> dict[str, Any]:
+    """Check the minimum handoff data needed by subsequent stages."""
     state = _read_json(path)
     required = {
         "candidate_id",
         "state",
-        "vector",
         "mpi_ranks",
         "work_dir",
         "case_dir",
@@ -292,32 +271,7 @@ def _read_json(path: Path) -> dict[str, Any]:
 
 
 def _write_json(path: Path, value: dict[str, Any]) -> None:
+    """Publish complete state so a later stage cannot read a partial write."""
     temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
     temporary.write_text(json.dumps(value, indent=2) + "\n", encoding="utf-8")
     os.replace(temporary, path)
-
-
-def _json_compatible(value: Any) -> Any:
-    if isinstance(value, dict):
-        return {
-            str(key): _json_compatible(item) for key, item in value.items()
-        }
-    if isinstance(value, (list, tuple)):
-        return [_json_compatible(item) for item in value]
-    tolist = getattr(value, "tolist", None)
-    if callable(tolist):
-        return _json_compatible(tolist())
-    item = getattr(value, "item", None)
-    if callable(item):
-        return _json_compatible(item())
-    return value
-
-
-@contextmanager
-def _working_directory(path: Path) -> Iterator[None]:
-    previous = Path.cwd()
-    os.chdir(path)
-    try:
-        yield
-    finally:
-        os.chdir(previous)

@@ -58,13 +58,17 @@ Select the backend in either candidate or optimization configuration:
 ```toml
 [execution]
 backend = "slurm"
+
+[resources]
+# Trial budget; validate against your workload.
+memory_mib_per_evaluation = 1536
 ```
 
 Run `hydroflow-opt` inside an existing `sbatch` or `salloc` allocation. The allocation may span nodes, but each candidate must fit on one node. Every stage, including geometry generation and meshing, is launched as an explicit exclusive one-node `srun` step. Serial stages request one task; each OpenFOAM stage is launched as:
 
 ```text
 srun --exclusive --nodes=1 --ntasks=<mpi_ranks> \
-  --cpus-per-task=<threads_per_rank> --cpu-bind=cores --mpi=pmix \
+  --cpus-per-task=<threads_per_rank> --cpu-bind=cores --mem=1536M --mpi=pmix \
   simpleFoam -parallel -fileHandler collated
 ```
 
@@ -83,6 +87,7 @@ and request:
 ```bash
 #SBATCH --nodes=1
 #SBATCH --ntasks=8
+#SBATCH --mem=8G
 #SBATCH --cpus-per-task=1
 #SBATCH --hint=nomultithread
 ```
@@ -97,6 +102,7 @@ The staged example runs the supplied candidate with two OpenFOAM ranks:
 #!/bin/bash
 #SBATCH --nodes=1
 #SBATCH --ntasks=2
+#SBATCH --mem=4G
 #SBATCH --cpus-per-task=1
 #SBATCH --hint=nomultithread
 
@@ -110,3 +116,5 @@ hydroflow-opt run examples/tistos_candidate_slurm.toml
 ```
 
 Do not wrap `hydroflow-opt` itself in `srun`; the backend creates the stage steps from inside the allocation. The run and scratch directories must be on a filesystem visible from every allocated node because consecutive stages of a candidate are not required to run on the same node.
+
+The memory budget above applies to every stage across all its ranks. Batch `--mem` remains per node; leave headroom beyond the concurrent stage budgets. The example 1536 MiB budget must be validated for your meshes. Older runs can resume with `hydroflow-opt resume RUN_DIR --memory-mib-per-evaluation 1536`.

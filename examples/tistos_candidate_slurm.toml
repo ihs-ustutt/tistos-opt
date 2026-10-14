@@ -13,6 +13,8 @@ turbulent_iterations = 400
 backend = "slurm"
 
 [resources]
+# Trial memory budget per stage; validate against your workload.
+memory_mib_per_evaluation = 1536
 available_cpus = 2
 concurrent_evaluations = 1
 mpi_ranks = 2

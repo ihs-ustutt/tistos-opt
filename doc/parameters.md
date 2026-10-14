@@ -15,6 +15,6 @@ The parameter space contains ten blade quantities at three normalized span posit
 | `t_te` | 0.005, 0.06 | 0.005, 0.06 | 0.005, 0.06 |
 | `u_mid` | 0.4, 0.6 | 0.4, 0.6 | 0.4, 0.6 |
 
-Bounds are inclusive optimizer limits. `TistosCase.parameter_space()` returns the names and bounds in the exact order required by the legacy implementation.  Each name also has a legacy dtOO label, defined together with its bounds in `tistos_opt.case.PARAMETERS`.
+Bounds are inclusive optimizer limits. `TistosCase.parameter_space()` returns names and bounds in a stable optimizer order. Preparation maps parameters by name to their dtOO XML labels, independent of dictionary order. Names, labels, and bounds are defined together in `tistos_opt.case.PARAMETERS`.
 
 The plugin currently ignores `[case.options]`; there are no TiStoS-specific configuration options.

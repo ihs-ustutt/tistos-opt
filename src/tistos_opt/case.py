@@ -107,15 +107,18 @@ class TistosCase:
         work_dir = paths.scratch_dir / "tistos"
         case_dir = work_dir / f"tistos_ru_of_n_{state}"
         state_path = paths.evaluation_dir / "tistos-state.json"
+        # This method only describes commands; stages.py dispatches them later.
         python_stage = (sys.executable, "-m", "tistos_opt.stages")
         solver_resources = StageResources(
             processes=resources.mpi_ranks,
             threads_per_process=resources.threads_per_rank,
         )
         solver_command: tuple[str, ...] = ("simpleFoam",)
+        # OpenFOAM needs -parallel; the backend supplies mpiexec or srun.
         if resources.mpi_ranks > 1:
             solver_command += ("-parallel", "-fileHandler", "collated")
 
+        # Python stages use the default one process; only the solves use MPI.
         return EvaluationPlan(
             stages=(
                 EvaluationStage(

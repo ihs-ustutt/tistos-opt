@@ -1,6 +1,7 @@
 """Command-line entry points for individual TiStoS evaluation stages."""
 
 import argparse
+import logging
 from pathlib import Path
 
 from tistos_opt.runtime import configure_turbulent, finalize, prepare
@@ -24,6 +25,8 @@ def main(argv: list[str] | None = None) -> int:
     finalize_parser.add_argument("result", type=Path)
 
     args = parser.parse_args(argv)
+    # Backend stage logs collect both Python diagnostics and dtOO output.
+    logging.basicConfig(level=logging.INFO)
     if args.stage == "prepare":
         prepare(args.request, args.state)
     elif args.stage == "configure-turbulent":

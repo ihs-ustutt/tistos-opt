@@ -20,7 +20,7 @@ run-directory/
         └── tistos/
 ```
 
-Each stage directory contains hydroflow-opt's `metadata.json`, `stdout.log`, and `stderr.log`. Commands launched inside the TiStoS runtime also create OpenFOAM logs such as `log.checkMesh`, `log.decomposePar`, and `log.reconstructPar` in the generated case directory. The legacy code writes `tistos.log` in the TiStoS work directory.
+Each stage directory contains hydroflow-opt's `metadata.json`, `stdout.log`, and `stderr.log`. Commands launched inside the TiStoS runtime also create OpenFOAM logs such as `log.checkMesh`, `log.decomposePar`, and `log.reconstructPar` in the generated case directory. Python diagnostics and geometry/meshing subprocess output go to the backend stage logs. There is no separate `tistos.log`.
 
 ## Result metadata
 

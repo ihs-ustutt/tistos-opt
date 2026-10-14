@@ -117,30 +117,15 @@ def test_prepare_maps_parameters_and_configures_laminar_case(
     _write_case_files(case_dir)
     observed = {}
 
-    class FakeEvaluation:
-        MeshOk_ = True
-
-        def __init__(self, vector, state_label):
-            observed["vector"] = vector
-            observed["state"] = state_label
-
-        def pre(self):
-            observed["pre"] = True
-
-        def mesh(self):
-            observed["mesh"] = True
-
-        def get_history(self):
-            return {"status": "meshed"}
-
-    class FakeImplementation:
-        tistos = FakeEvaluation
+    def prepare_case(work, state_label, parameters):
+        observed["work_dir"] = work
+        observed["parameters"] = parameters
+        observed["state"] = state_label
+        return {"status": "meshed"}
 
     commands = []
     monkeypatch.setattr(runtime, "_stage_case", lambda scratch: work_dir)
-    monkeypatch.setattr(
-        runtime, "_load_implementation", lambda staged: FakeImplementation
-    )
+    monkeypatch.setattr(runtime, "prepare_case", prepare_case)
     monkeypatch.setattr(
         runtime,
         "_run_case_command",
@@ -152,10 +137,11 @@ def test_prepare_maps_parameters_and_configures_laminar_case(
     runtime.prepare(request_path, state_path)
 
     state_data = json.loads(state_path.read_text(encoding="utf-8"))
-    assert observed["vector"] == [values[item.name] for item in PARAMETERS]
+    assert observed["parameters"] == values
+    assert observed["work_dir"] == work_dir
     assert observed["state"] == state
-    assert observed["pre"] is True
-    assert observed["mesh"] is True
+    assert "vector" not in state_data
+    assert "mesh_path" not in state_data
     assert state_data["candidate_id"] == candidate_id
     assert state_data["history"] == {"status": "meshed"}
     assert commands == [
@@ -201,8 +187,9 @@ def test_configure_turbulent_updates_openfoam_files(tmp_path):
         ({"laminar_iterations": 37, "turbulent_iterations": 86}, 37, 123),
     ],
 )
+@pytest.mark.parametrize("legacy_state", [False, True])
 def test_finalize_writes_result_before_cleanup(
-    monkeypatch, tmp_path, options, laminar_end, end_time
+    monkeypatch, tmp_path, options, laminar_end, end_time, legacy_state
 ):
     request_path = tmp_path / "request.json"
     state_path = tmp_path / "state.json"
@@ -217,7 +204,11 @@ def test_finalize_writes_result_before_cleanup(
             {
                 "candidate_id": "candidate",
                 "state": "TISTOS_1",
-                "vector": [1.0, 2.0],
+                **(
+                    {"vector": [1.0, 2.0], "mesh_path": "old.msh"}
+                    if legacy_state
+                    else {}
+                ),
                 "mpi_ranks": 2,
                 "work_dir": str(work_dir),
                 "case_dir": str(case_dir),
@@ -229,31 +220,24 @@ def test_finalize_writes_result_before_cleanup(
     )
     observed = {}
 
-    class FakeEvaluation:
-        def __init__(self, vector, state):
-            observed["vector"] = vector
-            observed["state"] = state
-            self.history_ = {}
+    def evaluate_case(case, settings, history):
+        observed["case_dir"] = case
+        observed["solver_settings"] = settings
+        assert history == {"status": "meshed"}
+        history["status"] = "evaluated"
+        return 0.75, {"eta": 0.9}, history
 
-        def evaluate(self, **kwargs):
-            observed["solver_settings"] = kwargs
-            self.history_["status"] = "evaluated"
-            return 0.75, {"eta": 0.9}
+    def cleanup_case(work, state):
+        observed["result_existed_at_cleanup"] = result_path.is_file()
+        observed["cleaned"] = state
+        assert work == work_dir
 
-        def get_history(self):
-            return self.history_
-
-    class FakeImplementation:
-        tistos = FakeEvaluation
-
-        @staticmethod
-        def cleanupTistos(state):
-            observed["result_existed_at_cleanup"] = result_path.is_file()
-            observed["cleaned"] = state
-
-    monkeypatch.setattr(
-        runtime, "_load_implementation", lambda staged: FakeImplementation
+    monkeypatch.setitem(
+        sys.modules,
+        "tistos_opt._legacy.tistos_files.tistosPyBib",
+        SimpleNamespace(evaluate_case=evaluate_case),
     )
+    monkeypatch.setattr(runtime, "cleanup_case", cleanup_case)
     monkeypatch.setattr(runtime, "_run_case_command", lambda *args: None)
 
     runtime.finalize(request_path, state_path, result_path)
@@ -265,10 +249,9 @@ def test_finalize_writes_result_before_cleanup(
     assert result["metadata"]["history"]["status"] == "evaluated"
     assert observed["result_existed_at_cleanup"] is True
     assert observed["cleaned"] == "TISTOS_1"
-    assert observed["solver_settings"] == {
-        "laminar_end_time": laminar_end,
-        "end_time": end_time,
-    }
+    assert observed["case_dir"] == case_dir
+    assert observed["solver_settings"].laminar_iterations == laminar_end
+    assert observed["solver_settings"].end_time == end_time
     assert result["metadata"]["solver_options"] == {
         "laminar_iterations": laminar_end,
         "turbulent_iterations": end_time - laminar_end,
@@ -301,23 +284,16 @@ def test_finalize_failure_preserves_case_and_writes_no_result(
     )
     observed = {}
 
-    class FakeEvaluation:
-        def __init__(self, vector, state):
-            del vector, state
-            self.history_ = {}
+    def evaluate_case(case, options, history):
+        raise RuntimeError("post-processing failed")
 
-        def evaluate(self, **kwargs):
-            raise RuntimeError("post-processing failed")
-
-    class FakeImplementation:
-        tistos = FakeEvaluation
-
-        @staticmethod
-        def cleanupTistos(state):
-            observed["cleaned"] = state
-
+    monkeypatch.setitem(
+        sys.modules,
+        "tistos_opt._legacy.tistos_files.tistosPyBib",
+        SimpleNamespace(evaluate_case=evaluate_case),
+    )
     monkeypatch.setattr(
-        runtime, "_load_implementation", lambda staged: FakeImplementation
+        runtime, "cleanup_case", lambda *args: observed.update(cleaned=True)
     )
 
     with pytest.raises(RuntimeError, match="post-processing failed"):
@@ -331,7 +307,7 @@ def test_finalize_failure_preserves_case_and_writes_no_result(
 def test_stage_case_copies_runtime_assets(tmp_path):
     work_dir = runtime._stage_case(tmp_path)
 
-    assert (work_dir / "sim_tistos.py").is_file()
+    assert not list(work_dir.rglob("*.py"))
     assert (work_dir / "tistos_files" / "machine.xml").is_file()
     assert (work_dir / "xml" / "tistos_ru_of.xml").is_file()
     assert (
@@ -510,10 +486,7 @@ def test_legacy_results_use_configured_limits(
         )
     )
     runner = module["tistosRunner"](
-        "case",
-        "TISTOS",
-        1,
-        [],
+        "case_n_TISTOS_1",
         laminar_end_time=laminar_end,
         end_time=end_time,
     )
