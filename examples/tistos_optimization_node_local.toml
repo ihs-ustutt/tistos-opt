@@ -1,0 +1,30 @@
+[run]
+directory = "runs/tistos_optimization_node_local"
+scratch_mode = "node_local"
+scratch_directory = "${TMPDIR}/hydroflow-opt"
+
+[case]
+name = "tistos"
+
+[case.options]
+laminar_iterations = 100
+turbulent_iterations = 400
+
+[execution]
+backend = "slurm"
+
+[resources]
+# Illustrative budgets: measure and adjust for your CFD workload.
+memory_mib_per_evaluation = 4096
+available_cpus = 8
+concurrent_evaluations = 4
+mpi_ranks = 2
+threads_per_rank = 1
+
+[optimization]
+islands = 4
+population_size = 8
+generations = 1
+differential_weight = 0.8
+crossover_rate = 0.9
+topology = "fully_connected"
