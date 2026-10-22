@@ -5,6 +5,10 @@ scratch_directory = "runs/tistos_candidate/scratch"
 [case]
 name = "tistos"
 
+[case.options]
+laminar_iterations = 100
+turbulent_iterations = 400
+
 [resources]
 available_cpus = 1
 concurrent_evaluations = 1

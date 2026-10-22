@@ -1,13 +1,21 @@
 """Case declaration for hydroflow-opt without importing CFD dependencies."""
 
-from __future__ import annotations
-
 import sys
+import zlib
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Any
 
-from hydroflow_opt.models import ParameterSpace
+from hydroflow_opt.models import (
+    Candidate,
+    EvaluationPaths,
+    EvaluationPlan,
+    EvaluationStage,
+    ParameterSpace,
+    ResourceRequest,
+    StageResources,
+)
+
+from tistos_opt.options import SolverOptions
 
 
 @dataclass(frozen=True)
@@ -73,12 +81,11 @@ PARAMETERS = (
 
 
 class TistosCase:
-    """Expose the TiStoS parameters and isolated worker command."""
+    """Expose the TiStoS parameters and staged evaluation workflow."""
 
     def parameter_space(self, options: dict[str, Any]) -> ParameterSpace:
         """Return the physical optimization bounds for TiStoS."""
-
-        del options
+        SolverOptions.from_options(options)
         return ParameterSpace(
             names=tuple(parameter.name for parameter in PARAMETERS),
             lower_bounds=tuple(
@@ -89,22 +96,78 @@ class TistosCase:
             ),
         )
 
-    def worker_command(
+    def evaluation_plan(
         self,
-        request_path: Path,
-        result_path: Path,
-    ) -> list[str]:
-        """Run each evaluation in a new Python interpreter."""
+        candidate: Candidate,
+        paths: EvaluationPaths,
+        resources: ResourceRequest,
+    ) -> EvaluationPlan:
+        """Return the serial preparation and parallel solver stages."""
+        state = _state_label(candidate.id)
+        work_dir = paths.scratch_dir / "tistos"
+        case_dir = work_dir / f"tistos_ru_of_n_{state}"
+        state_path = paths.evaluation_dir / "tistos-state.json"
+        # This method only describes commands; stages.py dispatches them later.
+        python_stage = (sys.executable, "-m", "tistos_opt.stages")
+        solver_resources = StageResources(
+            processes=resources.mpi_ranks,
+            threads_per_process=resources.threads_per_rank,
+        )
+        solver_command: tuple[str, ...] = ("simpleFoam",)
+        # OpenFOAM needs -parallel; the backend supplies mpiexec or srun.
+        if resources.mpi_ranks > 1:
+            solver_command += ("-parallel", "-fileHandler", "collated")
 
-        return [
-            sys.executable,
-            "-m",
-            "tistos_opt.worker",
-            str(request_path),
-            str(result_path),
-        ]
+        # Python stages use the default one process; only the solves use MPI.
+        return EvaluationPlan(
+            stages=(
+                EvaluationStage(
+                    name="prepare",
+                    command=(
+                        *python_stage,
+                        "prepare",
+                        str(paths.request_path),
+                        str(state_path),
+                    ),
+                    working_directory=paths.scratch_dir,
+                ),
+                EvaluationStage(
+                    name="solve-laminar",
+                    command=solver_command,
+                    working_directory=case_dir,
+                    resources=solver_resources,
+                ),
+                EvaluationStage(
+                    name="configure-turbulent",
+                    command=(
+                        *python_stage,
+                        "configure-turbulent",
+                        str(state_path),
+                    ),
+                    working_directory=case_dir,
+                ),
+                EvaluationStage(
+                    name="solve-turbulent",
+                    command=solver_command,
+                    working_directory=case_dir,
+                    resources=solver_resources,
+                ),
+                EvaluationStage(
+                    name="finalize",
+                    command=(
+                        *python_stage,
+                        "finalize",
+                        str(paths.request_path),
+                        str(state_path),
+                        str(paths.result_path),
+                    ),
+                    working_directory=work_dir,
+                ),
+            )
+        )
 
-    def worker_placement(self) -> str:
-        """Let the worker control scheduler-managed OpenFOAM stages."""
 
-        return "controller"
+def _state_label(candidate_id: str) -> str:
+    """Create the numeric-suffix state label required by legacy TiStoS."""
+    number = zlib.crc32(candidate_id.encode("utf-8"))
+    return f"TISTOS_{number}"

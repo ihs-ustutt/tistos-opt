@@ -1,48 +1,47 @@
-from pyDtOO import dtDeveloping
-from pyDtOO import dtForceDeveloping
-from pyDtOO import dtScalarDeveloping
-import numpy as np
+"""Read TiStoS solver output and calculate the established objective."""
+
+import logging
 import os
 import time
-import logging
-# logger = import_logger()
+from pathlib import Path
+from typing import Any
 
-from logging.handlers import WatchedFileHandler
+import numpy as np
+from pyDtOO import dtDeveloping, dtForceDeveloping, dtScalarDeveloping
 
+from tistos_opt.options import SolverOptions
 
-def import_logger(filename="tistos.log", level=logging.DEBUG):
-    logger = logging.getLogger(__name__)
-    logger.setLevel(level)
-    if not logger.handlers:
-        filehandler = WatchedFileHandler(filename)
-        filehandler.setLevel(level)
-        filehandler.setFormatter(
-            logging.Formatter("%(asctime)s %(levelname)s : %(message)s")
-        )
-        logger.addHandler(filehandler)
-    # logger.info(f"Initialized Logger. Filename: {filename}.")
-    return logger
+logger = logging.getLogger(__name__)
 
 
-logger = import_logger()
+def evaluate_case(
+    case_dir: Path, options: SolverOptions, history: dict[str, Any]
+) -> tuple[float, dict[str, Any], dict[str, Any]]:
+    """Return JSON-ready results, preserving preparation and failure history."""
+    runner = tistosRunner(
+        case_dir,
+        laminar_end_time=options.laminar_iterations,
+        end_time=options.end_time,
+    )
+    history = runner.ReadResults(dict(history))
+    fitness, extra = runner.GiveFitness()
+    logger.info("Fitness for %s: %s", case_dir, fitness)
+    return fitness, extra, history
 
 
-### CLASS FOR POSTPROCSESING TISTOS CASE ###
 class tistosRunner:
-    import sys
-
     OMEGA = 7.53982
     DHZUL = -2.4
 
-    def __init__(self, case, prefix, stateNumber, coeff):
-        self.case_ = case
-        self.prefix_ = prefix
-        self.stateNumber_ = stateNumber
-        self.coeff_ = coeff
-        self.state_ = str(self.prefix_) + "_" + str(self.stateNumber_)
+    def __init__(
+        self, case_dir, *,
+        laminar_end_time=100, end_time=500,
+    ):
+        self.case_dir = Path(case_dir)
 
         self.weights_ = {"tl": 1 / 3, "n": 1, "vl": 1 / 3}
-        self.end_time = 500
+        self.laminar_end_time = laminar_end_time
+        self.end_time = end_time
 
         #
         # Init variables
@@ -53,81 +52,47 @@ class tistosRunner:
         self.eta_ = {"n": 0}
         self.Vcav_ = {"n": 0}
 
-        self.addDataList_ = [
-            self.P_,
-            self.dH_,
-            self.eta_,
-            self.Vcav_,
-        ]  # Define for new case...
-
         self.isOk_ = False
-
-    @staticmethod
-    def TransformPre(stateLabel, x, cVstr):
-        return x, cVstr
-
-    @staticmethod
-    def DoF():
-        return [
-            {"label": "cV_ru_alpha_1_ex_0.0", "min": -0.155, "max": 0.025},
-            {"label": "cV_ru_alpha_1_ex_0.5", "min": -0.19, "max": -0.01},
-            {"label": "cV_ru_alpha_1_ex_1.0", "min": -0.19, "max": -0.01},
-            {"label": "cV_ru_alpha_2_ex_0.0", "min": -0.08, "max": 0.1},
-            {"label": "cV_ru_alpha_2_ex_0.5", "min": -0.08, "max": 0.1},
-            {"label": "cV_ru_alpha_2_ex_1.0", "min": -0.08, "max": 0.07},
-            {"label": "cV_ru_offsetM_ex_0.0", "min": 1.0, "max": 1.5},
-            {"label": "cV_ru_offsetM_ex_0.5", "min": 1.0, "max": 1.5},
-            {"label": "cV_ru_offsetM_ex_1.0", "min": 1.0, "max": 1.5},
-            {"label": "cV_ru_ratio_0.0", "min": 0.4, "max": 0.6},
-            {"label": "cV_ru_ratio_0.5", "min": 0.4, "max": 0.6},
-            {"label": "cV_ru_ratio_1.0", "min": 0.4, "max": 0.6},
-            {"label": "cV_ru_offsetPhiR_ex_0.0", "min": -0.15, "max": 0.15},
-            {"label": "cV_ru_offsetPhiR_ex_0.5", "min": -0.15, "max": 0.15},
-            {"label": "cV_ru_offsetPhiR_ex_1.0", "min": -0.15, "max": 0.15},
-            {"label": "cV_ru_bladeLength_0.0", "min": 0.4, "max": 0.8},
-            {"label": "cV_ru_bladeLength_0.5", "min": 0.6, "max": 1.0},
-            {"label": "cV_ru_bladeLength_1.0", "min": 0.8, "max": 1.3},
-            {"label": "cV_ru_t_le_a_0", "min": 0.005, "max": 0.06},
-            {"label": "cV_ru_t_le_a_0.5", "min": 0.005, "max": 0.06},
-            {"label": "cV_ru_t_le_a_1", "min": 0.005, "max": 0.06},
-            {"label": "cV_ru_t_mid_a_0", "min": 0.005, "max": 0.06},
-            {"label": "cV_ru_t_mid_a_0.5", "min": 0.005, "max": 0.06},
-            {"label": "cV_ru_t_mid_a_1", "min": 0.005, "max": 0.06},
-            {"label": "cV_ru_t_te_a_0", "min": 0.005, "max": 0.06},
-            {"label": "cV_ru_t_te_a_0.5", "min": 0.005, "max": 0.06},
-            {"label": "cV_ru_t_te_a_1", "min": 0.005, "max": 0.06},
-            {"label": "cV_ru_u_mid_a_0", "min": 0.4, "max": 0.6},
-            {"label": "cV_ru_u_mid_a_0.5", "min": 0.4, "max": 0.6},
-            {"label": "cV_ru_u_mid_a_1", "min": 0.4, "max": 0.6},
-        ]
 
     def ReadResults(self, history):
         omega = tistosRunner.OMEGA
         try:
             for i in ["n"]:
-                caseDirOf = self.case_ + "_" + i + "_" + self.state_
+                caseDirOf = self.case_dir
                 time_step_holder = self.end_time
                 #
                 # read openFoam results
                 #
                 Q_ru_dev = dtScalarDeveloping(
                     dtDeveloping(
-                        os.path.join(caseDirOf, "postProcessing/Q_ru_in/100")
+                        os.path.join(
+                            caseDirOf,
+                            f"postProcessing/Q_ru_in/{self.laminar_end_time}",
+                        )
                     ).Read()
                 )
                 pIn_ru_dev = dtScalarDeveloping(
                     dtDeveloping(
-                        os.path.join(caseDirOf, "postProcessing/ptot_ru_in/100")
+                        os.path.join(
+                            caseDirOf,
+                            f"postProcessing/ptot_ru_in/{self.laminar_end_time}",
+                        )
                     ).Read()
                 )
                 pOut_ru_dev = dtScalarDeveloping(
                     dtDeveloping(
-                        os.path.join(caseDirOf, "postProcessing/ptot_ru_out/100")
+                        os.path.join(
+                            caseDirOf,
+                            f"postProcessing/ptot_ru_out/{self.laminar_end_time}",
+                        )
                     ).Read()
                 )
                 Vcav = dtScalarDeveloping(
                     dtDeveloping(
-                        os.path.join(caseDirOf, "postProcessing/V_CAV/100")
+                        os.path.join(
+                            caseDirOf,
+                            f"postProcessing/V_CAV/{self.laminar_end_time}",
+                        )
                     ).Read()
                 )
                 F_dev = dtForceDeveloping(
@@ -136,7 +101,13 @@ class tistosRunner:
                     )
                 )
 
-                average_time = int(time_step_holder / 10)
+                average_time = max(
+                    1,
+                    min(
+                        time_step_holder // 10,
+                        self.end_time - self.laminar_end_time,
+                    ),
+                )
                 self.P_[i] = F_dev.MomentMeanLast(average_time)[2] * omega
                 self.dH_[i] = (
                     pOut_ru_dev.MeanLast(average_time)
@@ -167,13 +138,13 @@ class tistosRunner:
         return history
 
     def post_proc(self, timestep):
-        caseDirOf = self.case_ + "_n_" + self.state_
+        caseDirOf = self.case_dir
         omega = tistosRunner.OMEGA
         timestep_orig = timestep  # offset because different files...
-        if timestep > 100:
-            post_proc_folder = 100
+        if timestep > self.laminar_end_time:
+            post_proc_folder = self.laminar_end_time
             timestep_force = timestep
-            timestep = timestep - 100  ##laminare zeit abziehen
+            timestep = timestep - self.laminar_end_time
         else:
             post_proc_folder = 0
             timestep_force = timestep
@@ -214,7 +185,7 @@ class tistosRunner:
         ).dtype.names
         res = np.genfromtxt(path_solverInfo)
 
-        average_time = 10
+        average_time = min(10, timestep)
         res_dict = {}
         P = F_dev.MomentMean(timestep_force, average_time)[2] * omega
         dH = (
@@ -261,31 +232,11 @@ class tistosRunner:
                 )
         return float(P), float(dH), float(eta), float(Vcav), res_dict
 
-    @staticmethod
-    def FailedFitness():
-        return [tistosRunner.sys.float_info.max]
-
-    @staticmethod
-    def IsFailedFitness(fit):
-        if fit[0] == tistosRunner.sys.float_info.max:
-            return True
-        else:
-            return False
-
     def GiveFitness(self):
         dHZul = tistosRunner.DHZUL
         fitnessEta, fitnessVcav, fitnessH = 0.0, 0.0, 0.0
-        devH = 1e6
         if self.isOk_:
-            ### calculate fitness
-            # deviation from design head
-            devH = np.abs(self.dH_["n"] / dHZul - 1)
-            # deviation from design head must be <= 20%, otherwise individual
-            # is invalid. Multiplication of penalty term with deviation from design
-            # head --> If two indivuduals are invalid, the individual with the lower
-            # violation of the constraint is dominant.
-            # if devH > 0.2:
-            # return [1e6*devH]
+            # Preserve the established efficiency, cavitation, and head terms.
             for i in "n":
                 fitnessEta += self.weights_[i] * np.abs(1 + self.eta_[i])
                 fitnessVcav += self.weights_[i] * self.Vcav_[i]
@@ -294,23 +245,16 @@ class tistosRunner:
             fitness = (
                 np.tanh(fitnessEta) + np.tanh(fitnessVcav * 1e6) + np.tanh(fitnessH)
             )
-            fitness_extra = {
-                "dH": self.dH_["n"],
-                "eta": self.eta_["n"],
-                "VCav": self.Vcav_["n"],
-                "P": self.P_["n"],
-            }
-            ### get residuals and stuff
         else:
-            fitness_extra = {
-                "dH": self.dH_["n"],
-                "eta": self.eta_["n"],
-                "VCav": self.Vcav_["n"],
-                "P": self.P_["n"],
-            }
             fitness = 3.0
+        fitness_extra = {
+            "dH": float(self.dH_["n"]),
+            "eta": float(self.eta_["n"]),
+            "VCav": float(self.Vcav_["n"]),
+            "P": float(self.P_["n"]),
+        }
         self.extract_residuals(fitness_extra)
-        return fitness, fitness_extra
+        return float(fitness), fitness_extra
 
     def extract_residuals(self, fitness_extra):
         ### get residuals and stuff
@@ -327,7 +271,7 @@ class tistosRunner:
         omega_final = []
         time_list = []
         end_time = self.end_time
-        for timestep in np.arange(20, end_time + 20, 20):
+        for timestep in range(20, end_time + 1, 20):
             try:
                 P_temp, dH_temp, eta_temp, Vcav_temp, res = self.post_proc(timestep)
                 P.append(P_temp)

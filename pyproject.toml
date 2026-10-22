@@ -22,7 +22,7 @@ classifiers = [
     "Programming Language :: Python :: 3.13",
 ]
 dependencies = [
-  "hydroflow-opt",
+  "hydroflow-opt>=0.2.0",
   "numpy",
   "oslo.concurrency",
   "scikit-learn"
@@ -34,6 +34,11 @@ dev = [
     "pytest",
     "pytest-cov",
     "ruff",
+]
+docs = [
+    "myst-parser",
+    "sphinx",
+    "sphinx_rtd_theme",
 ]
 lint = [
     "mypy",
@@ -47,9 +52,11 @@ tests = [
 [project.entry-points."hydroflow_opt.cases"]
 tistos = "tistos_opt.case:TistosCase"
 
+[project.urls]
+repository = "https://github.com/thomasisensee/tistos-opt"
+
 [project.scripts]
 tistos-opt = "tistos_opt.cli:main"
-tistos-opt-worker = "tistos_opt.worker:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/tistos_opt"]
@@ -57,8 +64,6 @@ exclude = [
   "src/tistos_opt/_case_data/xml/ru_gridMesh_local.xml",
   "src/tistos_opt/_case_data/xml/tistos_ru_of_old.xml",
   "src/tistos_opt/_legacy/tistos_files/machineSave.xml",
-  "src/tistos_opt/_legacy/tistos_files/run_of.sh",
-  "src/tistos_opt/_legacy/tistos_files/sim_openFoam.py",
 ]
 
 [tool.pytest.ini_options]
@@ -81,4 +86,19 @@ extend-exclude = ["src/tistos_opt/_legacy", "src/tistos_opt/_case_data"]
 force-exclude = true
 
 [tool.ruff.lint]
-select = ["E", "F", "I"]
+select = [
+    "B",   # flake8-bugbear
+    "D",   # pydocstyle
+    "E",   # pycodestyle error rules
+    "F",   # Pyflakes
+    "I",   # isort
+    "SIM", # flake8-simplify
+    "UP",  # pyupgrade
+    "RUF", # Ruff-specific rules
+]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["D"]
