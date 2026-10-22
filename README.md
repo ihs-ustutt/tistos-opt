@@ -72,7 +72,7 @@ srun --exclusive --nodes=1 --ntasks=<mpi_ranks> \
   simpleFoam -parallel -fileHandler collated
 ```
 
-There is no nested `mpiexec` in Slurm mode. In local mode, hydroflow-opt runs serial stages directly and prefixes multi-process solver stages with `mpiexec -n <mpi_ranks>`. Multiple candidate evaluations can therefore perform meshing concurrently as well as solving concurrently. For four islands with two one-thread MPI ranks per candidate, configure:
+There is no nested `mpiexec` in Slurm mode. In local mode, `hydroflow-opt` runs serial stages directly and prefixes multi-process solver stages with `mpiexec -n <mpi_ranks>`. Multiple candidate evaluations can therefore perform meshing concurrently as well as solving concurrently. For four islands with two one-thread MPI ranks per candidate, configure:
 
 ```toml
 [resources]
@@ -121,8 +121,17 @@ The memory budget above applies to every stage across all its ranks. Batch `--me
 
 ## Multi-node runs using local SSDs
 
-Use [the node-local example](examples/tistos_optimization_node_local.toml) with a hydroflow-opt version supporting `run.scratch_mode = "node_local"`. The framework pins each candidate's five stages to one node and places its working files beneath that node's `$TMPDIR`. Multiple candidates can share a node; each solve still fits on one node. Keep `run.directory` on shared storage.
+Use [the node-local example](examples/tistos_optimization_node_local.toml) with a `hydroflow-opt` version supporting `run.scratch_mode = "node_local"`. The framework pins each candidate's five stages to one node and places its working files beneath that node's `$TMPDIR`. Multiple candidates can share a node; each solve still fits on one node. Keep `run.directory` on shared storage.
 
 For the example's illustrative resources, request two nodes, four CPUs per node, and 8 GiB per node (`--nodes=2 --ntasks-per-node=4 --cpus-per-task=1 --mem=8G`). Activate the CFD environment and run `hydroflow-opt optimize examples/tistos_optimization_node_local.toml` directly in the batch script. Adjust ranks, memory, concurrency, and wall time for the actual workload. Use a fresh run directory for each optimization.
 
 Successful cases retain the existing cleanup behavior. Failed evaluations export bounded logs and configuration to shared storage; meshes and fields remain local and disappear when the job ends. Optimization resume reuses saved objectives and starts interrupted CFD evaluations from preparation.
+
+## Documentation
+
+Build the documentation with:
+
+```bash
+python -m pip install -e .[doc]
+sphinx-build -M html doc doc/build
+```
