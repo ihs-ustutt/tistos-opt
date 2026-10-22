@@ -22,7 +22,7 @@ classifiers = [
     "Programming Language :: Python :: 3.13",
 ]
 dependencies = [
-  "hydroflow-opt",
+  "hydroflow-opt>=0.2.0",
   "numpy",
   "oslo.concurrency",
   "scikit-learn"
