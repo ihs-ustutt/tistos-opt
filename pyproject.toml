@@ -52,6 +52,9 @@ tests = [
 [project.entry-points."hydroflow_opt.cases"]
 tistos = "tistos_opt.case:TistosCase"
 
+[project.urls]
+repository = "https://github.com/thomasisensee/tistos-opt"
+
 [project.scripts]
 tistos-opt = "tistos_opt.cli:main"
 
